@@ -10,7 +10,7 @@ use rustc_hir::def::{
 };
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
-use rustc_resolve::ParentScope;
+use rustc_resolve::{ParentScope, Suggestion};
 use rustc_session::lint;
 use rustc_span::hygiene::MacroKind;
 use rustc_span::symbol::Ident;
@@ -20,6 +20,7 @@ use smallvec::SmallVec;
 
 use std::cell::Cell;
 use std::ops::Range;
+use std::iter;
 
 use crate::clean::*;
 use crate::core::DocContext;
@@ -46,7 +47,7 @@ pub fn collect_intra_doc_links(krate: Crate, cx: &DocContext<'_>) -> Crate {
 }
 
 enum ErrorKind {
-    ResolutionFailure,
+    ResolutionFailure(Option<Suggestion>),
     AnchorFailure(AnchorFailure),
 }
 
@@ -58,6 +59,15 @@ enum AnchorFailure {
     AssocType,
     Field,
     Method,
+}
+
+impl ErrorKind {
+    fn suggestion(self) -> Option<Suggestion> {
+        match self {
+            Self::ResolutionFailure(suggestion) => suggestion,
+            ErrorKind::AnchorFailure(_) => None,
+        }
+    }
 }
 
 struct LinkCollector<'a, 'tcx> {
@@ -85,9 +95,9 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
 
         let mut split = path_str.rsplitn(3, "::");
         let variant_field_name =
-            split.next().map(|f| Symbol::intern(f)).ok_or(ErrorKind::ResolutionFailure)?;
+            split.next().map(|f| Symbol::intern(f)).ok_or(ErrorKind::ResolutionFailure(None))?;
         let variant_name =
-            split.next().map(|f| Symbol::intern(f)).ok_or(ErrorKind::ResolutionFailure)?;
+            split.next().map(|f| Symbol::intern(f)).ok_or(ErrorKind::ResolutionFailure(None))?;
         let path = split
             .next()
             .map(|f| {
@@ -98,14 +108,15 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 }
                 f.to_owned()
             })
-            .ok_or(ErrorKind::ResolutionFailure)?;
+            .ok_or(ErrorKind::ResolutionFailure(None))?;
         let (_, ty_res) = cx
             .enter_resolver(|resolver| {
                 resolver.resolve_str_path_error(DUMMY_SP, &path, TypeNS, module_id)
             })
-            .map_err(|_| ErrorKind::ResolutionFailure)?;
+            .map_err(ErrorKind::ResolutionFailure)?;
+        // TODO: when would we see a Res::Err but resolve_str_path_error returns Ok?
         if let Res::Err = ty_res {
-            return Err(ErrorKind::ResolutionFailure);
+            return Err(ErrorKind::ResolutionFailure(None));
         }
         let ty_res = ty_res.map_id(|_| panic!("unexpected node_id"));
         match ty_res {
@@ -117,7 +128,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     .flat_map(|imp| cx.tcx.associated_items(*imp).in_definition_order())
                     .any(|item| item.ident.name == variant_name)
                 {
-                    return Err(ErrorKind::ResolutionFailure);
+                    return Err(ErrorKind::ResolutionFailure(None));
                 }
                 match cx.tcx.type_of(did).kind {
                     ty::Adt(def, _) if def.is_enum() => {
@@ -130,18 +141,18 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                 )),
                             ))
                         } else {
-                            Err(ErrorKind::ResolutionFailure)
+                            Err(ErrorKind::ResolutionFailure(None))
                         }
                     }
-                    _ => Err(ErrorKind::ResolutionFailure),
+                    _ => Err(ErrorKind::ResolutionFailure(None)),
                 }
             }
-            _ => Err(ErrorKind::ResolutionFailure),
+            _ => Err(ErrorKind::ResolutionFailure(None)),
         }
     }
 
     /// Resolves a string as a macro.
-    fn macro_resolve(&self, path_str: &str, parent_id: Option<DefId>) -> Option<Res> {
+    fn macro_resolve(&self, path_str: &str, parent_id: Option<DefId>) -> Result<Res, Option<Suggestion>> {
         let cx = self.cx;
         let path = ast::Path::from_ident(Ident::from_str(path_str));
         cx.enter_resolver(|resolver| {
@@ -153,26 +164,26 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 false,
             ) {
                 if let SyntaxExtensionKind::LegacyBang { .. } = ext.kind {
-                    return Some(res.map_id(|_| panic!("unexpected id")));
+                    return Ok(res.map_id(|_| panic!("unexpected id")));
                 }
             }
             if let Some(res) = resolver.all_macros().get(&Symbol::intern(path_str)) {
-                return Some(res.map_id(|_| panic!("unexpected id")));
+                return Ok(res.map_id(|_| panic!("unexpected id")));
             }
             if let Some(module_id) = parent_id {
-                if let Ok((_, res)) =
-                    resolver.resolve_str_path_error(DUMMY_SP, path_str, MacroNS, module_id)
-                {
+                match resolver.resolve_str_path_error(DUMMY_SP, path_str, MacroNS, module_id) {
                     // don't resolve builtins like `#[derive]`
-                    if let Res::Def(..) = res {
+                    Ok((_, res @ Res::Def(..))) => {
                         let res = res.map_id(|_| panic!("unexpected node_id"));
-                        return Some(res);
+                        return Ok(res);
                     }
+                    Ok(..) => Err(None),
+                    Err(suggestion) => Err(suggestion),
                 }
             } else {
                 debug!("attempting to resolve item without parent module: {}", path_str);
+                Err(None)
             }
-            None
         })
     }
     /// Resolves a string as a path within a particular namespace. Also returns an optional
@@ -238,7 +249,10 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 };
 
                 if value != (ns == ValueNS) {
-                    return Err(ErrorKind::ResolutionFailure);
+                    // TODO: could we suggest using a different namespace?
+                    // Although if there was no explicit namespace it will resolve when we check the next one,
+                    // and if there was an explicit namespace we might not want to suggest removing it.
+                    return Err(ErrorKind::ResolutionFailure(None));
                 }
             } else if let Some((path, prim)) = is_primitive(path_str, ns) {
                 if extra_fragment.is_some() {
@@ -250,14 +264,15 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 // because methods are not handled by the resolver
                 // If so, bail when we're not looking for a value.
                 if ns != ValueNS {
-                    return Err(ErrorKind::ResolutionFailure);
+                    // TODO: same as above, suggest using ValueNS?
+                    return Err(ErrorKind::ResolutionFailure(None));
                 }
             }
 
             // Try looking for methods and associated items.
             let mut split = path_str.rsplitn(2, "::");
             let item_name =
-                split.next().map(|f| Symbol::intern(f)).ok_or(ErrorKind::ResolutionFailure)?;
+                split.next().map(|f| Symbol::intern(f)).ok_or(ErrorKind::ResolutionFailure(None))?;
             let path = split
                 .next()
                 .map(|f| {
@@ -268,10 +283,10 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     }
                     f.to_owned()
                 })
-                .ok_or(ErrorKind::ResolutionFailure)?;
+                .ok_or(ErrorKind::ResolutionFailure(None))?;
 
             if let Some((path, prim)) = is_primitive(&path, TypeNS) {
-                for &impl_ in primitive_impl(cx, &path).ok_or(ErrorKind::ResolutionFailure)? {
+                for &impl_ in primitive_impl(cx, &path).ok_or(ErrorKind::ResolutionFailure(None))? {
                     let link = cx
                         .tcx
                         .associated_items(impl_)
@@ -290,14 +305,14 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         return Ok(link);
                     }
                 }
-                return Err(ErrorKind::ResolutionFailure);
+                return Err(ErrorKind::ResolutionFailure(None));
             }
 
             let (_, ty_res) = cx
                 .enter_resolver(|resolver| {
                     resolver.resolve_str_path_error(DUMMY_SP, &path, TypeNS, module_id)
                 })
-                .map_err(|_| ErrorKind::ResolutionFailure)?;
+                .map_err(ErrorKind::ResolutionFailure)?;
             if let Res::Err = ty_res {
                 return self.variant_field(path_str, current_item, module_id);
             }
@@ -445,8 +460,9 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 _ => self.variant_field(path_str, current_item, module_id),
             }
         } else {
+            // FIXME: this should never happen in practice
             debug!("attempting to resolve item without parent module: {}", path_str);
-            Err(ErrorKind::ResolutionFailure)
+            Err(ErrorKind::ResolutionFailure(None))
         }
     }
 }
@@ -454,10 +470,10 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
 /// Check for resolve collisions between a trait and its derive
 ///
 /// These are common and we should just resolve to the trait in that case
-fn is_derive_trait_collision<T>(ns: &PerNS<Option<(Res, T)>>) -> bool {
+fn is_derive_trait_collision<T>(ns: &PerNS<Result<(Res, T), Option<Suggestion>>>) -> bool {
     if let PerNS {
-        type_ns: Some((Res::Def(DefKind::Trait, _), _)),
-        macro_ns: Some((Res::Def(DefKind::Macro(MacroKind::Derive), _), _)),
+        type_ns: Ok((Res::Def(DefKind::Trait, _), _)),
+        macro_ns: Ok((Res::Def(DefKind::Macro(MacroKind::Derive), _), _)),
         ..
     } = *ns
     {
@@ -647,8 +663,8 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             Some(&item),
                         ) {
                             Ok(res) => res,
-                            Err(ErrorKind::ResolutionFailure) => {
-                                resolution_failure(cx, &item, path_str, &dox, link_range);
+                            Err(ErrorKind::ResolutionFailure(suggestion)) => {
+                                resolution_failure(cx, &item, path_str, &dox, link_range, suggestion);
                                 // This could just be a normal link or a broken link
                                 // we could potentially check if something is
                                 // "intra-doc-link-like" and warn in that case.
@@ -671,8 +687,8 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             Some(&item),
                         ) {
                             Ok(res) => res,
-                            Err(ErrorKind::ResolutionFailure) => {
-                                resolution_failure(cx, &item, path_str, &dox, link_range);
+                            Err(ErrorKind::ResolutionFailure(suggestion)) => {
+                                resolution_failure(cx, &item, path_str, &dox, link_range, suggestion);
                                 // This could just be a normal link.
                                 continue;
                             }
@@ -701,7 +717,8 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
                                     continue;
                                 }
-                                x => x.ok(),
+                                Err(ErrorKind::ResolutionFailure(suggestion)) => Err(suggestion),
+                                Ok(res) => Ok(res),
                             },
                             value_ns: match self.resolve(
                                 path_str,
@@ -716,40 +733,48 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
                                     continue;
                                 }
-                                x => x.ok(),
+                                x => x,
                             }
+                            .map_err(|err| err.suggestion())
                             .and_then(|(res, fragment)| {
                                 // Constructors are picked up in the type namespace.
                                 match res {
-                                    Res::Def(DefKind::Ctor(..), _) | Res::SelfCtor(..) => None,
+                                    Res::Def(DefKind::Ctor(..), _) | Res::SelfCtor(..) => Err(None),
                                     _ => match (fragment, extra_fragment) {
                                         (Some(fragment), Some(_)) => {
                                             // Shouldn't happen but who knows?
-                                            Some((res, Some(fragment)))
+                                            Ok((res, Some(fragment)))
                                         }
                                         (fragment, None) | (None, fragment) => {
-                                            Some((res, fragment))
+                                            Ok((res, fragment))
                                         }
                                     },
                                 }
                             }),
                         };
 
-                        if candidates.is_empty() {
-                            resolution_failure(cx, &item, path_str, &dox, link_range);
+                        let candidates_iter = candidates.clone();
+                        let mut iter = iter::once(candidates_iter.value_ns)
+                            .chain(iter::once(candidates_iter.type_ns))
+                            .chain(iter::once(candidates_iter.macro_ns));
+
+                        let successful_resolves = iter.clone().filter(|x| x.is_ok()).count();
+
+                        if successful_resolves == 0 {
+                            // TODO: emit all the suggestions, not just one
+                            let suggestion = iter.find_map(|x| dbg!(x.err()).flatten());
+                            resolution_failure(cx, &item, path_str, &dox, link_range, suggestion);
                             // this could just be a normal link
                             continue;
                         }
 
-                        let len = candidates.clone().present_items().count();
-
-                        if len == 1 {
-                            candidates.present_items().next().unwrap()
-                        } else if len == 2 && is_derive_trait_collision(&candidates) {
+                        if successful_resolves == 1 {
+                            iter.next().unwrap().unwrap()
+                        } else if successful_resolves == 2 && is_derive_trait_collision(&candidates) {
                             candidates.type_ns.unwrap()
                         } else {
                             if is_derive_trait_collision(&candidates) {
-                                candidates.macro_ns = None;
+                                candidates.macro_ns = Err(None);
                             }
                             ambiguity_error(
                                 cx,
@@ -757,17 +782,18 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 path_str,
                                 &dox,
                                 link_range,
-                                candidates.map(|candidate| candidate.map(|(res, _)| res)),
+                                candidates.map(|candidate| candidate.ok().map(|(res, _)| res)),
                             );
                             continue;
                         }
                     }
                     Some(MacroNS) => {
-                        if let Some(res) = self.macro_resolve(path_str, base_node) {
-                            (res, extra_fragment)
-                        } else {
-                            resolution_failure(cx, &item, path_str, &dox, link_range);
-                            continue;
+                        match self.macro_resolve(path_str, base_node) {
+                            Ok(res) => (res, extra_fragment),
+                            Err(suggestion) => {
+                                resolution_failure(cx, &item, path_str, &dox, link_range, suggestion);
+                                continue;
+                            }
                         }
                     }
                 }
@@ -1022,6 +1048,7 @@ fn resolution_failure(
     path_str: &str,
     dox: &str,
     link_range: Option<Range<usize>>,
+    suggestion: Option<Suggestion>,
 ) {
     report_diagnostic(
         cx,
@@ -1032,6 +1059,9 @@ fn resolution_failure(
         |diag, sp| {
             if let Some(sp) = sp {
                 diag.span_label(sp, "unresolved link");
+            }
+            if let Some((suggestions, msg, applicability)) = suggestion {
+                diag.multipart_suggestion(&msg, suggestions, applicability);
             }
 
             diag.help(r#"to escape `[` and `]` characters, add '\' before them like `\[` or `\]`"#);
@@ -1205,7 +1235,8 @@ fn handle_variant(
     let parent = if let Some(parent) = cx.tcx.parent(res.def_id()) {
         parent
     } else {
-        return Err(ErrorKind::ResolutionFailure);
+        // TODO: when would an enum not have a parent? This seems like it should be an assert
+        return Err(ErrorKind::ResolutionFailure(None));
     };
     let parent_def = Res::Def(DefKind::Enum, parent);
     let variant = cx.tcx.expect_variant_res(res);

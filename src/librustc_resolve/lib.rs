@@ -60,7 +60,8 @@ use std::{cmp, fmt, iter, ptr};
 use tracing::debug;
 
 use diagnostics::{extend_span_to_previous_binding, find_span_of_binding_until_next_binding};
-use diagnostics::{ImportSuggestion, LabelSuggestion, Suggestion};
+use diagnostics::{ImportSuggestion, LabelSuggestion};
+pub use diagnostics::Suggestion;
 use imports::{Import, ImportKind, ImportResolver, NameResolution};
 use late::{HasGenericParams, PathSource, Rib, RibKind::*};
 use macros::{MacroRulesBinding, MacroRulesScope};
@@ -3041,8 +3042,8 @@ impl<'a> Resolver<'a> {
 
     /// Rustdoc uses this to resolve things in a recoverable way. `ResolutionError<'a>`
     /// isn't something that can be returned because it can't be made to live that long,
-    /// and also it's a private type. Fortunately rustdoc doesn't need to know the error,
-    /// just that an error occurred.
+    /// and also it's a private type. However, we can still return the suggestion in case
+    /// an item failed to resolve.
     // FIXME(Manishearth): intra-doc links won't get warned of epoch changes.
     pub fn resolve_str_path_error(
         &mut self,
@@ -3050,7 +3051,7 @@ impl<'a> Resolver<'a> {
         path_str: &str,
         ns: Namespace,
         module_id: DefId,
-    ) -> Result<(ast::Path, Res), ()> {
+    ) -> Result<(ast::Path, Res), Option<Suggestion>> {
         let path = if path_str.starts_with("::") {
             ast::Path {
                 span,
@@ -3071,8 +3072,11 @@ impl<'a> Resolver<'a> {
         };
         let module = self.get_module(module_id);
         let parent_scope = &ParentScope::module(module);
-        let res = self.resolve_ast_path(&path, ns, parent_scope).map_err(|_| ())?;
-        Ok((path, res))
+        match self.resolve_ast_path(&path, ns, parent_scope) {
+            Ok(res) => Ok((path, res)),
+            Err((_, ResolutionError::FailedToResolve { suggestion, .. })) => Err(suggestion),
+            Err(_) => Err(None),
+        }
     }
 
     // Resolve a path passed from rustdoc or HIR lowering.

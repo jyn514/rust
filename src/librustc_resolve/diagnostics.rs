@@ -31,7 +31,7 @@ use crate::{ParentScope, PathResult, ResolutionError, Resolver, Scope, ScopeSet,
 type Res = def::Res<ast::NodeId>;
 
 /// A vector of spans and replacements, a message and applicability.
-crate type Suggestion = (Vec<(Span, String)>, String, Applicability);
+pub type Suggestion = (Vec<(Span, String)>, String, Applicability);
 
 /// Potential candidate for an undeclared or out-of-scope label - contains the ident of a
 /// similarly named label and whether or not it is reachable.

@@ -432,7 +432,7 @@ pub fn run_core(options: RustdocOptions) -> (clean::Crate, RenderInfo, RenderOpt
                                 TypeNS,
                                 LocalDefId { local_def_index: CRATE_DEF_INDEX }.to_def_id(),
                             )
-                            .unwrap_or_else(|()| {
+                            .unwrap_or_else(|_| {
                                 panic!("Unable to resolve external crate {}", extern_name)
                             });
                     }
