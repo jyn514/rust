@@ -169,7 +169,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         current_item: &Option<String>,
         parent_id: Option<DefId>,
         extra_fragment: &Option<String>,
-        item_opt: Option<&Item>,
+        item: &Item,
     ) -> Result<(Res, Option<String>), ErrorKind> {
         let cx = self.cx;
 
@@ -333,8 +333,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         // TODO: give a warning if this is ambiguous
                         .next();
                     // TODO: is this necessary? It doesn't look right, and also only works for local items
-                    let trait_kind = item_opt
-                        .and_then(|item| self.cx.as_local_hir_id(item.def_id))
+                    let trait_kind = self.cx.as_local_hir_id(item.def_id)
                         .and_then(|item_hir| {
                             // Checks if item_name belongs to `impl SomeTrait for SomeItem`
                             let parent_hir = self.cx.tcx.hir().get_parent_item(item_hir);
@@ -703,7 +702,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             &current_item,
                             base_node,
                             &extra_fragment,
-                            Some(&item),
+                            &item,
                         ) {
                             Ok(res) => res,
                             Err(ErrorKind::ResolutionFailure) => {
@@ -727,7 +726,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             &current_item,
                             base_node,
                             &extra_fragment,
-                            Some(&item),
+                            &item,
                         ) {
                             Ok(res) => res,
                             Err(ErrorKind::ResolutionFailure) => {
@@ -754,7 +753,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 &current_item,
                                 base_node,
                                 &extra_fragment,
-                                Some(&item),
+                                &item,
                             ) {
                                 Err(ErrorKind::AnchorFailure(msg)) => {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
@@ -769,7 +768,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 &current_item,
                                 base_node,
                                 &extra_fragment,
-                                Some(&item),
+                                &item,
                             ) {
                                 Err(ErrorKind::AnchorFailure(msg)) => {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
