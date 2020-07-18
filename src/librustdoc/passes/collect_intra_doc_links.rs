@@ -293,6 +293,14 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     debug!("looking for associated item named {} for item {:?}", item_name, did);
                     let ty = cx.tcx.type_of(did);
                     // Checks if item_name belongs to `impl SomeItem`
+                    // `def_id` should be a trait
+                    let associated_items_for_def_id = |tcx: ty::TyCtxt<'_>, def_id: DefId| -> Vec<_> {
+                        tcx.associated_items(def_id)
+                              .filter_by_name(tcx, Ident::with_dummy_span(item_name), def_id)
+                              .map(|assoc| (assoc.def_id, assoc.kind))
+                              // TODO: this collect seems a shame
+                              .collect()
+                    };
                     let impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
                     let candidates: Vec<_> = impls
                         .flat_map(|impl_outer| {
@@ -316,7 +324,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                                 )
                                              })
                                              // TODO: this collect seems a shame
-                                             .collect()
+                                             .collect::<Vec<_>>()
                                     } else {
                                         // These are provided methods or default types:
                                         // ```
@@ -326,17 +334,14 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                         // }
                                         // ```
                                         // TODO: this is wrong, it should look at the trait, not the impl
-                                        cx.tcx.associated_items(impl_outer.def_id)
-                                              .filter_by_name(cx.tcx, Ident::with_dummy_span(item_name), impl_outer.def_id)
-                                              .map(|assoc| (assoc.def_id, assoc.kind))
-                                              // TODO: this collect seems a shame
-                                              .collect::<Vec<_>>()
+                                        associated_items_for_def_id(cx.tcx, impl_outer.def_id)
                                     }
                                 }
                                 _ => panic!("get_impls returned something that wasn't an impl"),
                             }
                         })
-                        .chain(cx.tcx.all_impls())
+                        .chain(cx.tcx.all_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
+                        //.chain(cx.tcx.all_local_trait_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
                         .collect();
                     if candidates.len() > 1 {
                         let candidates = candidates.into_iter()
