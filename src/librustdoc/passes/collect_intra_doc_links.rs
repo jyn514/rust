@@ -287,14 +287,53 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::TyAlias,
                     did,
                 ) => {
+                    debug!("looking for associated item named {} for item {:?}", item_name, did);
+                    let ty = cx.tcx.type_of(did);
                     // Checks if item_name belongs to `impl SomeItem`
-                    let impl_item = cx
-                        .tcx
-                        .inherent_impls(did)
-                        .iter()
-                        .flat_map(|imp| cx.tcx.associated_items(*imp).in_definition_order())
-                        .find(|item| item.ident.name == item_name);
-                    let trait_item = item_opt
+                    let impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
+                    let impl_kind = impls
+                        .flat_map(|impl_outer| {
+                            match impl_outer.inner {
+                                ImplItem(impl_) => {
+                                    debug!("considering trait {:?}", impl_.trait_);
+                                    // Give precedence to methods that were overridden
+                                    if !impl_.provided_trait_methods.contains(&*item_name.as_str()) {
+                                        impl_.items.into_iter()
+                                             .filter(|assoc| assoc.name.as_deref() == Some(&*item_name.as_str()))
+                                             .map(|assoc| {
+                                                trace!("considering associated item {:?}", assoc.inner);
+                                                // We have a slight issue: normal methods come from `clean` types,
+                                                // but provided methods come directly from `tcx`.
+                                                // Fortunately, we don't need the whole method, we just need to know
+                                                // what kind of associated item it is.
+                                                assoc.inner.as_assoc_kind()
+                                                     .expect("inner items for a trait should be associated items")
+                                             })
+                                             // TODO: this collect seems a shame
+                                             .collect()
+                                    } else {
+                                        // These are provided methods or default types:
+                                        // ```
+                                        // trait T {
+                                        //   type A = usize;
+                                        //   fn has_default() -> A { 0 }
+                                        // }
+                                        // ```
+                                        // TODO: this is wrong, it should look at the trait, not the impl
+                                        cx.tcx.associated_items(impl_outer.def_id)
+                                              .filter_by_name(cx.tcx, Ident::with_dummy_span(item_name), impl_outer.def_id)
+                                              .map(|assoc| assoc.kind)
+                                              // TODO: this collect seems a shame
+                                              .collect::<Vec<_>>()
+                                    }
+                                }
+                                _ => panic!("get_impls returned something that wasn't an impl"),
+                            }
+                        })
+                        // TODO: give a warning if this is ambiguous
+                        .next();
+                    // TODO: is this necessary? It doesn't look right, and also only works for local items
+                    let trait_kind = item_opt
                         .and_then(|item| self.cx.as_local_hir_id(item.def_id))
                         .and_then(|item_hir| {
                             // Checks if item_name belongs to `impl SomeTrait for SomeItem`
@@ -312,32 +351,34 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                         let associated_item = cx.tcx.associated_item(*child);
                                         associated_item
                                     })
-                                    .find(|child| child.ident.name == item_name),
+                                    .find(|child| child.ident.name == item_name)
+                                    .map(|child| child.kind),
                                 _ => None,
                             }
                         });
-                    let item = match (impl_item, trait_item) {
-                        (Some(from_impl), Some(_)) => {
+                    debug!("considering items {:?} and {:?}", impl_kind, trait_kind);
+                    let kind = match (impl_kind, trait_kind) {
+                        (Some(from_kind), Some(_)) => {
                             // Although it's ambiguous, return impl version for compat. sake.
                             // To handle that properly resolve() would have to support
                             // something like
                             // [`ambi_fn`](<SomeStruct as SomeTrait>::ambi_fn)
-                            Some(from_impl)
+                            Some(from_kind)
                         }
-                        (None, Some(from_trait)) => Some(from_trait),
-                        (Some(from_impl), None) => Some(from_impl),
+                        (None, Some(from_kind)) => Some(from_kind),
+                        (Some(from_kind), None) => Some(from_kind),
                         _ => None,
                     };
 
-                    if let Some(item) = item {
-                        let out = match item.kind {
+                    if let Some(kind) = kind {
+                        let out = match kind {
                             ty::AssocKind::Fn if ns == ValueNS => "method",
                             ty::AssocKind::Const if ns == ValueNS => "associatedconstant",
                             ty::AssocKind::Type if ns == ValueNS => "associatedtype",
                             _ => return self.variant_field(path_str, current_item, module_id),
                         };
                         if extra_fragment.is_some() {
-                            Err(ErrorKind::AnchorFailure(if item.kind == ty::AssocKind::Fn {
+                            Err(ErrorKind::AnchorFailure(if kind == ty::AssocKind::Fn {
                                 "methods cannot be followed by anchors"
                             } else {
                                 "associated constants cannot be followed by anchors"
