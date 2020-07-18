@@ -46,6 +46,9 @@ pub fn collect_intra_doc_links(krate: Crate, cx: &DocContext<'_>) -> Crate {
 enum ErrorKind {
     ResolutionFailure,
     AnchorFailure(&'static str),
+    Ambiguous {
+        candidates: Vec<Res>,
+    }
 }
 
 struct LinkCollector<'a, 'tcx> {
@@ -291,7 +294,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     let ty = cx.tcx.type_of(did);
                     // Checks if item_name belongs to `impl SomeItem`
                     let impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
-                    let impl_kind = impls
+                    let candidates: Vec<_> = impls
                         .flat_map(|impl_outer| {
                             match impl_outer.inner {
                                 ImplItem(impl_) => {
@@ -306,8 +309,11 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                                 // but provided methods come directly from `tcx`.
                                                 // Fortunately, we don't need the whole method, we just need to know
                                                 // what kind of associated item it is.
-                                                assoc.inner.as_assoc_kind()
-                                                     .expect("inner items for a trait should be associated items")
+                                                (
+                                                    assoc.def_id,
+                                                    assoc.inner.as_assoc_kind()
+                                                         .expect("inner items for a trait should be associated items")
+                                                )
                                              })
                                              // TODO: this collect seems a shame
                                              .collect()
@@ -322,7 +328,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                         // TODO: this is wrong, it should look at the trait, not the impl
                                         cx.tcx.associated_items(impl_outer.def_id)
                                               .filter_by_name(cx.tcx, Ident::with_dummy_span(item_name), impl_outer.def_id)
-                                              .map(|assoc| assoc.kind)
+                                              .map(|assoc| (assoc.def_id, assoc.kind))
                                               // TODO: this collect seems a shame
                                               .collect::<Vec<_>>()
                                     }
@@ -330,8 +336,15 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                 _ => panic!("get_impls returned something that wasn't an impl"),
                             }
                         })
-                        // TODO: give a warning if this is ambiguous
-                        .next();
+                        .chain(cx.tcx.all_impls())
+                        .collect();
+                    if candidates.len() > 1 {
+                        let candidates = candidates.into_iter()
+                            .map(|(def_id, kind)| Res::Def(kind.as_def_kind(), def_id))
+                            .collect();
+                        return Err(ErrorKind::Ambiguous { candidates });
+                    }
+                    let impl_kind = candidates.into_iter().next().map(|(_, kind)| kind);
                     // TODO: is this necessary? It doesn't look right, and also only works for local items
                     let trait_kind = self.cx.as_local_hir_id(item.def_id)
                         .and_then(|item_hir| {
@@ -694,6 +707,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                 }
 
                 match kind {
+                    // TODO: reduce this duplicate code
                     Some(ns @ ValueNS) => {
                         match self.resolve(
                             path_str,
@@ -716,6 +730,17 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
                                 continue;
                             }
+                            Err(ErrorKind::Ambiguous { candidates }) => {
+                                ambiguity_error(
+                                    cx,
+                                    &item,
+                                    path_str,
+                                    &dox,
+                                    link_range,
+                                    candidates.into_iter().map(|res| (res, TypeNS)).collect(),
+                                );
+                                continue;
+                            }
                         }
                     }
                     Some(ns @ TypeNS) => {
@@ -736,6 +761,17 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             }
                             Err(ErrorKind::AnchorFailure(msg)) => {
                                 anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
+                                continue;
+                            }
+                            Err(ErrorKind::Ambiguous { candidates }) => {
+                                ambiguity_error(
+                                    cx,
+                                    &item,
+                                    path_str,
+                                    &dox,
+                                    link_range,
+                                    candidates.into_iter().map(|res| (res, TypeNS)).collect(),
+                                );
                                 continue;
                             }
                         }
@@ -809,13 +845,18 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             if is_derive_trait_collision(&candidates) {
                                 candidates.macro_ns = None;
                             }
+                            let candidates = candidates.map(|opt| opt.map(|(res, _)| res));
+                            let candidates = [TypeNS, ValueNS, MacroNS]
+                                .iter()
+                                .filter_map(|&ns| candidates[ns].map(|res| (res, ns)))
+                                .collect();
                             ambiguity_error(
                                 cx,
                                 &item,
                                 path_str,
                                 &dox,
                                 link_range,
-                                candidates.map(|candidate| candidate.map(|(res, _)| res)),
+                                candidates,
                             );
                             continue;
                         }
@@ -1001,7 +1042,7 @@ fn ambiguity_error(
     path_str: &str,
     dox: &str,
     link_range: Option<Range<usize>>,
-    candidates: PerNS<Option<Res>>,
+    candidates: Vec<(Res, Namespace)>,
 ) {
     let hir_id = match cx.as_local_hir_id(item.def_id) {
         Some(hir_id) => hir_id,
@@ -1020,10 +1061,6 @@ fn ambiguity_error(
         |lint| {
             let mut msg = format!("`{}` is ", path_str);
 
-            let candidates = [TypeNS, ValueNS, MacroNS]
-                .iter()
-                .filter_map(|&ns| candidates[ns].map(|res| (res, ns)))
-                .collect::<Vec<_>>();
             match candidates.as_slice() {
                 [(first_def, _), (second_def, _)] => {
                     msg += &format!(
