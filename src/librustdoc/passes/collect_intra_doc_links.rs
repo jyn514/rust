@@ -172,7 +172,6 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         current_item: &Option<String>,
         parent_id: Option<DefId>,
         extra_fragment: &Option<String>,
-        item: &Item,
     ) -> Result<(Res, Option<String>), ErrorKind> {
         let cx = self.cx;
 
@@ -291,43 +290,23 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     did,
                 ) => {
                     debug!("looking for associated item named {} for item {:?}", item_name, did);
-                    let impl_kind = resolve_associated_trait_item(did, item_name, &self.cx)?;
-                    // TODO: is this necessary? It doesn't look right, and also only works for local items
-                    let trait_kind = self.cx.as_local_hir_id(item.def_id)
-                        .and_then(|item_hir| {
-                            // Checks if item_name belongs to `impl SomeTrait for SomeItem`
-                            let parent_hir = self.cx.tcx.hir().get_parent_item(item_hir);
-                            let item_parent = self.cx.tcx.hir().find(parent_hir);
-                            match item_parent {
-                                Some(hir::Node::Item(hir::Item {
-                                    kind: hir::ItemKind::Impl { of_trait: Some(_), self_ty, .. },
-                                    ..
-                                })) => cx
-                                    .tcx
-                                    .associated_item_def_ids(self_ty.hir_id.owner)
-                                    .iter()
-                                    .map(|child| {
-                                        let associated_item = cx.tcx.associated_item(*child);
-                                        associated_item
-                                    })
-                                    .find(|child| child.ident.name == item_name)
-                                    .map(|child| child.kind),
-                                _ => None,
-                            }
-                        });
-                    debug!("considering items {:?} and {:?}", impl_kind, trait_kind);
-                    let kind = match (impl_kind, trait_kind) {
-                        (Some(from_kind), Some(_)) => {
-                            // Although it's ambiguous, return impl version for compat. sake.
-                            // To handle that properly resolve() would have to support
-                            // something like
-                            // [`ambi_fn`](<SomeStruct as SomeTrait>::ambi_fn)
-                            Some(from_kind)
-                        }
-                        (None, Some(from_kind)) => Some(from_kind),
-                        (Some(from_kind), None) => Some(from_kind),
-                        _ => None,
-                    };
+                    // Checks if item_name belongs to `impl SomeItem`
+                    let mut kind = cx
+                        .tcx
+                        .inherent_impls(did)
+                        .iter()
+                        .flat_map(|imp| cx.tcx.associated_items(*imp).in_definition_order())
+                        .find(|item| item.ident.name == item_name)
+                        .map(|item| item.kind);
+
+                    // Check if item_name belogns to `impl SomeTrait for SomeItem`
+                    // This gives precedence to `impl SomeItem`:
+                    // Although having both would be ambiguous, use impl version for compat. sake.
+                    // To handle that properly resolve() would have to support
+                    // something like [`ambi_fn`](<SomeStruct as SomeTrait>::ambi_fn)
+                    if kind.is_none() {
+                        kind = resolve_associated_trait_item(did, item_name, &self.cx)?;
+                    }
 
                     if let Some(kind) = kind {
                         let out = match kind {
@@ -725,7 +704,6 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             &current_item,
                             base_node,
                             &extra_fragment,
-                            &item,
                         ) {
                             Ok(res) => res,
                             Err(ErrorKind::ResolutionFailure) => {
@@ -760,7 +738,6 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                             &current_item,
                             base_node,
                             &extra_fragment,
-                            &item,
                         ) {
                             Ok(res) => res,
                             Err(ErrorKind::ResolutionFailure) => {
@@ -798,7 +775,6 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 &current_item,
                                 base_node,
                                 &extra_fragment,
-                                &item,
                             ) {
                                 Err(ErrorKind::AnchorFailure(msg)) => {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
@@ -813,7 +789,6 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 &current_item,
                                 base_node,
                                 &extra_fragment,
-                                &item,
                             ) {
                                 Err(ErrorKind::AnchorFailure(msg)) => {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
