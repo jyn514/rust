@@ -291,65 +291,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     did,
                 ) => {
                     debug!("looking for associated item named {} for item {:?}", item_name, did);
-                    let ty = cx.tcx.type_of(did);
-                    // Checks if item_name belongs to `impl SomeItem`
-                    // `def_id` should be a trait
-                    let associated_items_for_def_id = |tcx: ty::TyCtxt<'_>, def_id: DefId| -> Vec<_> {
-                        tcx.associated_items(def_id)
-                              .filter_by_name(tcx, Ident::with_dummy_span(item_name), def_id)
-                              .map(|assoc| (assoc.def_id, assoc.kind))
-                              // TODO: this collect seems a shame
-                              .collect()
-                    };
-                    let impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
-                    let candidates: Vec<_> = impls
-                        .flat_map(|impl_outer| {
-                            match impl_outer.inner {
-                                ImplItem(impl_) => {
-                                    debug!("considering trait {:?}", impl_.trait_);
-                                    // Give precedence to methods that were overridden
-                                    if !impl_.provided_trait_methods.contains(&*item_name.as_str()) {
-                                        impl_.items.into_iter()
-                                             .filter(|assoc| assoc.name.as_deref() == Some(&*item_name.as_str()))
-                                             .map(|assoc| {
-                                                trace!("considering associated item {:?}", assoc.inner);
-                                                // We have a slight issue: normal methods come from `clean` types,
-                                                // but provided methods come directly from `tcx`.
-                                                // Fortunately, we don't need the whole method, we just need to know
-                                                // what kind of associated item it is.
-                                                (
-                                                    assoc.def_id,
-                                                    assoc.inner.as_assoc_kind()
-                                                         .expect("inner items for a trait should be associated items")
-                                                )
-                                             })
-                                             // TODO: this collect seems a shame
-                                             .collect::<Vec<_>>()
-                                    } else {
-                                        // These are provided methods or default types:
-                                        // ```
-                                        // trait T {
-                                        //   type A = usize;
-                                        //   fn has_default() -> A { 0 }
-                                        // }
-                                        // ```
-                                        // TODO: this is wrong, it should look at the trait, not the impl
-                                        associated_items_for_def_id(cx.tcx, impl_outer.def_id)
-                                    }
-                                }
-                                _ => panic!("get_impls returned something that wasn't an impl"),
-                            }
-                        })
-                        .chain(cx.tcx.all_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
-                        //.chain(cx.tcx.all_local_trait_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
-                        .collect();
-                    if candidates.len() > 1 {
-                        let candidates = candidates.into_iter()
-                            .map(|(def_id, kind)| Res::Def(kind.as_def_kind(), def_id))
-                            .collect();
-                        return Err(ErrorKind::Ambiguous { candidates });
-                    }
-                    let impl_kind = candidates.into_iter().next().map(|(_, kind)| kind);
+                    let impl_kind = resolve_associated_trait_item(did, item_name, &self.cx)?;
                     // TODO: is this necessary? It doesn't look right, and also only works for local items
                     let trait_kind = self.cx.as_local_hir_id(item.def_id)
                         .and_then(|item_hir| {
@@ -482,6 +424,68 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             Err(ErrorKind::ResolutionFailure)
         }
     }
+}
+
+fn resolve_associated_trait_item(did: DefId, item_name: Symbol, cx: &DocContext<'_>) -> Result<Option<ty::AssocKind>, ErrorKind> {
+    let ty = cx.tcx.type_of(did);
+    // Checks if item_name belongs to `impl SomeItem`
+    // `def_id` should be a trait
+    let associated_items_for_def_id = |tcx: ty::TyCtxt<'_>, def_id: DefId| -> Vec<_> {
+        tcx.associated_items(def_id)
+            .filter_by_name(tcx, Ident::with_dummy_span(item_name), def_id)
+            .map(|assoc| (assoc.def_id, assoc.kind))
+            // TODO: this collect seems a shame
+            .collect()
+    };
+    let impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
+    let candidates: Vec<_> = impls
+        .flat_map(|impl_outer| {
+            match impl_outer.inner {
+                ImplItem(impl_) => {
+                    debug!("considering trait {:?}", impl_.trait_);
+                    // Give precedence to methods that were overridden
+                    if !impl_.provided_trait_methods.contains(&*item_name.as_str()) {
+                        impl_.items.into_iter()
+                                .filter(|assoc| assoc.name.as_deref() == Some(&*item_name.as_str()))
+                                .map(|assoc| {
+                                trace!("considering associated item {:?}", assoc.inner);
+                                // We have a slight issue: normal methods come from `clean` types,
+                                // but provided methods come directly from `tcx`.
+                                // Fortunately, we don't need the whole method, we just need to know
+                                // what kind of associated item it is.
+                                (
+                                    assoc.def_id,
+                                    assoc.inner.as_assoc_kind()
+                                            .expect("inner items for a trait should be associated items")
+                                )
+                                })
+                                // TODO: this collect seems a shame
+                                .collect::<Vec<_>>()
+                    } else {
+                        // These are provided methods or default types:
+                        // ```
+                        // trait T {
+                        //   type A = usize;
+                        //   fn has_default() -> A { 0 }
+                        // }
+                        // ```
+                        // TODO: this is wrong, it should look at the trait, not the impl
+                        associated_items_for_def_id(cx.tcx, impl_outer.def_id)
+                    }
+                }
+                _ => panic!("get_impls returned something that wasn't an impl"),
+            }
+        })
+        .chain(cx.tcx.all_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
+        //.chain(cx.tcx.all_local_trait_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
+        .collect();
+    if candidates.len() > 1 {
+        let candidates = candidates.into_iter()
+            .map(|(def_id, kind)| Res::Def(kind.as_def_kind(), def_id))
+            .collect();
+        return Err(ErrorKind::Ambiguous { candidates });
+    }
+    Ok(candidates.into_iter().next().map(|(_, kind)| kind))
 }
 
 /// Check for resolve collisions between a trait and its derive
