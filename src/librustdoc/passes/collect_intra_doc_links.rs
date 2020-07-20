@@ -239,6 +239,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 // If resolution failed, it may still be a method
                 // because methods are not handled by the resolver
                 // If so, bail when we're not looking for a value.
+                // TODO: is this correct? What about associated types?
                 if ns != ValueNS {
                     return Err(ErrorKind::ResolutionFailure);
                 }
@@ -305,7 +306,8 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     // To handle that properly resolve() would have to support
                     // something like [`ambi_fn`](<SomeStruct as SomeTrait>::ambi_fn)
                     if kind.is_none() {
-                        kind = resolve_associated_trait_item(did, item_name, &self.cx)?;
+                        kind = resolve_associated_trait_item(did, item_name, ns, &self.cx)?;
+                        debug!("got associated item kind {:?}", kind);
                     }
 
                     if let Some(kind) = kind {
@@ -405,23 +407,27 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
     }
 }
 
-fn resolve_associated_trait_item(did: DefId, item_name: Symbol, cx: &DocContext<'_>) -> Result<Option<ty::AssocKind>, ErrorKind> {
+fn resolve_associated_trait_item(did: DefId, item_name: Symbol, ns: Namespace, cx: &DocContext<'_>) -> Result<Option<ty::AssocKind>, ErrorKind> {
+    use rustc_hir::def_id::LOCAL_CRATE;
+
     let ty = cx.tcx.type_of(did);
-    // Checks if item_name belongs to `impl SomeItem`
-    // `def_id` should be a trait
-    let associated_items_for_def_id = |tcx: ty::TyCtxt<'_>, def_id: DefId| -> Vec<_> {
-        tcx.associated_items(def_id)
-            .filter_by_name(tcx, Ident::with_dummy_span(item_name), def_id)
+    // Checks if item_name belongs to this `impl_`
+    // `impl_` should be a trait or trait implementation.
+    let associated_items_for_impl = |tcx: ty::TyCtxt<'_>, impl_: DefId| -> Vec<_> {
+        tcx.associated_items(impl_)
+            // TODO: should this be unhygienic?
+            .filter_by_name(tcx, Ident::with_dummy_span(item_name), impl_)
             .map(|assoc| (assoc.def_id, assoc.kind))
             // TODO: this collect seems a shame
             .collect()
     };
-    let impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
-    let candidates: Vec<_> = impls
+    // First consider automatic impls: `impl From<T> for T`
+    let implicit_impls = crate::clean::get_auto_trait_and_blanket_impls(cx, ty, did);
+    let mut candidates: Vec<_> = implicit_impls
         .flat_map(|impl_outer| {
             match impl_outer.inner {
                 ImplItem(impl_) => {
-                    debug!("considering trait {:?}", impl_.trait_);
+                    debug!("considering auto or blanket impl for trait {:?}", impl_.trait_);
                     // Give precedence to methods that were overridden
                     if !impl_.provided_trait_methods.contains(&*item_name.as_str()) {
                         impl_.items.into_iter()
@@ -449,22 +455,60 @@ fn resolve_associated_trait_item(did: DefId, item_name: Symbol, cx: &DocContext<
                         // }
                         // ```
                         // TODO: this is wrong, it should look at the trait, not the impl
-                        associated_items_for_def_id(cx.tcx, impl_outer.def_id)
+                        associated_items_for_impl(cx.tcx, impl_outer.def_id)
                     }
                 }
                 _ => panic!("get_impls returned something that wasn't an impl"),
             }
         })
-        .chain(cx.tcx.all_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
-        //.chain(cx.tcx.all_local_trait_impls(did).flat_map(|impl_| associated_items_for_def_id(cx.tcx, impl_)))
         .collect();
+    // Next consider explicit impls: `impl MyTrait for MyType`
+    // There isn't a cheap way to do this. Just look at every trait!
+    for &trait_ in cx.tcx.all_traits(LOCAL_CRATE) {
+        debug!("considering explicit impl for trait {:?}", trait_);
+        // We can skip the trait if it doesn't have the associated item `item_name`
+        let assoc_item = cx.tcx
+            .associated_items(trait_)
+            .find_by_name_and_namespace(cx.tcx, Ident::with_dummy_span(item_name), ns, trait_)
+            .map(|assoc| (assoc.def_id, assoc.kind));
+        if let Some(assoc_item) = assoc_item {
+            debug!("considering item {:?}", assoc_item);
+            // Look at each trait implementation to see if it's an impl for `did`
+            cx.tcx.for_each_relevant_impl(trait_, ty, |impl_| {
+                use ty::TyKind;
+
+                let trait_ref = cx.tcx.impl_trait_ref(impl_).expect("this is not an inherent impl");
+                // Check if these are the same type.
+                let impl_type = trait_ref.self_ty();
+                debug!("comparing type {} with kind {:?} against def_id {:?}", impl_type, impl_type.kind, did);
+                // Fast path: if this is a primitive simple `==` will work
+                let same_type = impl_type == ty || match impl_type.kind {
+                    // Check if these are the same def_id
+                    TyKind::Adt(def, _) => {
+                        debug!("adt did: {:?}", def.did);
+                        def.did == did
+                    }
+                    TyKind::Foreign(def_id) => def_id == did,
+                    _ => false,
+                };
+                if same_type {
+                    // We found it!
+                    debug!("found a match!");
+                    candidates.push(assoc_item);
+                }
+            });
+        }
+    }
+
     if candidates.len() > 1 {
+        debug!("ambiguous");
         let candidates = candidates.into_iter()
             .map(|(def_id, kind)| Res::Def(kind.as_def_kind(), def_id))
             .collect();
         return Err(ErrorKind::Ambiguous { candidates });
     }
-    Ok(candidates.into_iter().next().map(|(_, kind)| kind))
+    // Cleanup and go home
+    Ok(candidates.pop().map(|(_, kind)| kind))
 }
 
 /// Check for resolve collisions between a trait and its derive
@@ -718,6 +762,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 continue;
                             }
                             Err(ErrorKind::Ambiguous { candidates }) => {
+                                debug!("got ambiguity error: {:?}", candidates);
                                 ambiguity_error(
                                     cx,
                                     &item,
@@ -776,11 +821,23 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 base_node,
                                 &extra_fragment,
                             ) {
+                                Ok(res) => Some(res),
                                 Err(ErrorKind::AnchorFailure(msg)) => {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
                                     continue;
                                 }
-                                x => x.ok(),
+                                Err(ErrorKind::ResolutionFailure) => None,
+                                Err(ErrorKind::Ambiguous { candidates }) => {
+                                    ambiguity_error(
+                                        cx,
+                                        &item,
+                                        path_str,
+                                        &dox,
+                                        link_range,
+                                        candidates.into_iter().map(|res| (res, TypeNS)).collect(),
+                                    );
+                                    continue;
+                                }
                             },
                             value_ns: match self.resolve(
                                 path_str,
@@ -790,11 +847,23 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                                 base_node,
                                 &extra_fragment,
                             ) {
+                                Ok(res) => Some(res),
                                 Err(ErrorKind::AnchorFailure(msg)) => {
                                     anchor_failure(cx, &item, &ori_link, &dox, link_range, msg);
                                     continue;
                                 }
-                                x => x.ok(),
+                                Err(ErrorKind::ResolutionFailure) => None,
+                                Err(ErrorKind::Ambiguous { candidates }) => {
+                                    ambiguity_error(
+                                        cx,
+                                        &item,
+                                        path_str,
+                                        &dox,
+                                        link_range,
+                                        candidates.into_iter().map(|res| (res, TypeNS)).collect(),
+                                    );
+                                    continue;
+                                }
                             }
                             .and_then(|(res, fragment)| {
                                 // Constructors are picked up in the type namespace.
@@ -1028,9 +1097,11 @@ fn ambiguity_error(
     link_range: Option<Range<usize>>,
     candidates: Vec<(Res, Namespace)>,
 ) {
+    assert!(candidates.len() >= 2);
     let hir_id = match cx.as_local_hir_id(item.def_id) {
         Some(hir_id) => hir_id,
         None => {
+            debug!("ignoring ambiguity error for non-local item");
             // If non-local, no need to check anything.
             return;
         }
