@@ -139,5 +139,13 @@ LL | /// [m()]
    |      this link resolves to the macro `m`, which is not in the value namespace
    |      help: to link to the macro, add an exclamation mark: `m!`
 
-error: aborting due to 20 previous errors
+error: unresolved link to `Self`
+  --> $DIR/intra-link-errors.rs:102:6
+   |
+LL | /// [Self]
+   |      ^^^^ no item named `Self` in scope
+   |
+   = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+error: aborting due to 21 previous errors
 

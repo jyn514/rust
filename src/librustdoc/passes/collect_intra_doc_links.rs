@@ -63,6 +63,8 @@ enum ResolutionFailure<'a> {
     /// The link failed to resolve. `resolution_failure` should look to see if there's
     /// a more helpful error that can be given.
     NotResolved { module_id: DefId, partial_res: Option<Res>, unresolved: Cow<'a, str> },
+    /// The user linked to `[Self::x]`, but there's no `Self` item in scope
+    NoSelf,
     /// should not ever happen
     NoParentItem,
     /// used to communicate that this should be ignored, but shouldn't be reported to the user
@@ -101,19 +103,19 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
 
     fn variant_field(
         &self,
-        path_str: &'path str,
-        current_item: &Option<String>,
+        ty_res: Res,
+        remaining_path: &'path str,
         module_id: DefId,
     ) -> Result<(Res, Option<String>), ErrorKind<'path>> {
         let cx = self.cx;
         let no_res = || ResolutionFailure::NotResolved {
             module_id,
-            partial_res: None,
-            unresolved: path_str.into(),
+            partial_res: Some(ty_res),
+            unresolved: remaining_path.into(),
         };
 
-        debug!("looking for enum variant {}", path_str);
-        let mut split = path_str.rsplitn(3, "::");
+        debug!("looking for enum variant {} with base of {:?}", remaining_path, ty_res);
+        let mut split = remaining_path.rsplitn(3, "::");
         let (variant_field_str, variant_field_name) = split
             .next()
             .map(|f| (f, Symbol::intern(f)))
@@ -123,29 +125,10 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             // If there's no second component, the link looks like `[path]`.
             // So there's no partial res and we should say the whole link failed to resolve.
             split.next().map(|f| (f, Symbol::intern(f))).ok_or_else(no_res)?;
-        let path = split
-            .next()
-            .map(|f| {
-                if f == "self" || f == "Self" {
-                    if let Some(name) = current_item.as_ref() {
-                        return name.clone();
-                    }
-                }
-                f.to_owned()
-            })
-            // If there's no third component, we saw `[a::b]` before and it failed to resolve.
-            // So there's no partial res.
-            .ok_or_else(no_res)?;
-        let ty_res = cx
-            .enter_resolver(|resolver| {
-                resolver.resolve_str_path_error(DUMMY_SP, &path, TypeNS, module_id)
-            })
-            .map(|(_, res)| res)
-            .unwrap_or(Res::Err);
-        if let Res::Err = ty_res {
-            return Err(no_res().into());
+        if split.next().is_some() {
+            panic!("remaining_path must have at most 2 path segments (got {})", remaining_path);
         }
-        let ty_res = ty_res.map_id(|_| panic!("unexpected node_id"));
+
         match ty_res {
             Res::Def(DefKind::Enum, did) => {
                 if cx
@@ -236,12 +219,24 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
     fn resolve<'path>(
         &self,
         path_str: &'path str,
+        partial_res: Option<Res>,
         ns: Namespace,
-        current_item: &Option<String>,
         module_id: DefId,
         extra_fragment: &Option<String>,
     ) -> Result<(Res, Option<String>), ErrorKind<'path>> {
         let cx = self.cx;
+        if let Some(res) = partial_res {
+            assert!(!path_str.starts_with("Self::"));
+            debug!("got partial_res={:?}; skipping resolve", res);
+            return self.resolve_associated_item(
+                module_id,
+                extra_fragment,
+                Symbol::intern(path_str),
+                path_str,
+                ns,
+                res,
+            );
+        }
 
         let result = cx.enter_resolver(|resolver| {
             resolver.resolve_str_path_error(DUMMY_SP, &path_str, ns, module_id)
@@ -296,14 +291,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         let (item_str, item_name) = split.next().map(|i| (i, Symbol::intern(i))).unwrap();
         let path_root = split
             .next()
-            .map(|f| {
-                if f == "self" || f == "Self" {
-                    if let Some(name) = current_item.as_ref() {
-                        return name.clone();
-                    }
-                }
-                f.to_owned()
-            })
+            .map(|f| f.to_owned())
             // If there's no `::`, it's not an associated item.
             // So we can be sure that `rustc_resolve` was accurate when it said it wasn't resolved.
             .ok_or_else(|| {
@@ -314,47 +302,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     unresolved: item_str.into(),
                 }
             })?;
-
-        if let Some((path, prim)) = is_primitive(&path_root, TypeNS) {
-            let impls =
-                primitive_impl(cx, &path).ok_or_else(|| ResolutionFailure::NotResolved {
-                    module_id,
-                    partial_res: Some(prim),
-                    unresolved: item_str.into(),
-                })?;
-            for &impl_ in impls {
-                let link = cx
-                    .tcx
-                    .associated_items(impl_)
-                    .find_by_name_and_namespace(
-                        cx.tcx,
-                        Ident::with_dummy_span(item_name),
-                        ns,
-                        impl_,
-                    )
-                    .map(|item| match item.kind {
-                        ty::AssocKind::Fn => "method",
-                        ty::AssocKind::Const => "associatedconstant",
-                        ty::AssocKind::Type => "associatedtype",
-                    })
-                    .map(|out| (prim, Some(format!("{}#{}.{}", path, out, item_str))));
-                if let Some(link) = link {
-                    return Ok(link);
-                }
-            }
-            debug!(
-                "returning primitive error for {}::{} in {} namespace",
-                path,
-                item_name,
-                ns.descr()
-            );
-            return Err(ResolutionFailure::NotResolved {
-                module_id,
-                partial_res: Some(prim),
-                unresolved: item_str.into(),
-            }
-            .into());
-        }
+        debug!("split {} into {} and {}", path_str, path_root, item_name);
 
         let ty_res = cx
             .enter_resolver(|resolver| {
@@ -363,21 +311,66 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             })
             .map(|(_, res)| res);
         let ty_res = match ty_res {
-            Err(()) | Ok(Res::Err) => {
-                return if ns == Namespace::ValueNS {
-                    self.variant_field(path_str, current_item, module_id)
-                } else {
-                    Err(ResolutionFailure::NotResolved {
-                        module_id,
-                        partial_res: None,
-                        unresolved: path_root.into(),
+            Err(()) | Ok(Res::Err) | Ok(Res::Def(DefKind::Variant, _)) => {
+                if ns == Namespace::ValueNS {
+                    // Look for variant fields
+                    let mut iter = path_str.rmatch_indices("::");
+                    let segments = iter.by_ref().take(2);
+                    let (base, rest) = if let Some((idx, _)) = segments.last() {
+                        (&path_str[..idx], &path_str[idx + 2..])
+                    } else {
+                        debug!("didn't find three path segments; giving up");
+                        return Err(ResolutionFailure::NotResolved {
+                            module_id,
+                            partial_res: None,
+                            unresolved: path_root.into(),
+                        }
+                        .into());
+                    };
+                    debug!("looking for enum variant {} for enum {}", rest, base);
+
+                    let ty_res = cx
+                        .enter_resolver(|resolver| {
+                            resolver.resolve_str_path_error(DUMMY_SP, base, TypeNS, module_id)
+                        })
+                        .map(|(_, res)| res)
+                        .unwrap_or(Res::Err);
+                    if let Res::Err = ty_res {
+                        let no_res = ResolutionFailure::NotResolved {
+                            module_id,
+                            partial_res: None,
+                            unresolved: base.into(),
+                        };
+                        return Err(no_res.into());
                     }
-                    .into())
-                };
+                    let ty_res = ty_res.map_id(|_| panic!("unexpected node_id"));
+
+                    return self.variant_field(ty_res, rest, module_id);
+                }
+                return Err(ResolutionFailure::NotResolved {
+                    module_id,
+                    partial_res: None,
+                    unresolved: path_root.into(),
+                }
+                .into());
             }
             Ok(res) => res,
         };
         let ty_res = ty_res.map_id(|_| panic!("unexpected node_id"));
+        self.resolve_associated_item(module_id, extra_fragment, item_name, item_str, ns, ty_res)
+    }
+
+    fn resolve_associated_item(
+        &self,
+        module_id: DefId,
+        extra_fragment: &Option<String>,
+        item_name: Symbol,
+        item_str: &'path str,
+        ns: Namespace,
+        ty_res: Res,
+    ) -> Result<(Res, Option<String>), ErrorKind<'path>> {
+        let cx = self.cx;
+
         let res = match ty_res {
             Res::Def(DefKind::Struct | DefKind::Union | DefKind::Enum | DefKind::TyAlias, did) => {
                 debug!("looking for associated item named {} for item {:?}", item_name, did);
@@ -429,12 +422,16 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     match cx.tcx.type_of(did).kind() {
                         ty::Adt(def, _) => {
                             let field = if def.is_enum() {
-                                def.all_fields().find(|item| item.ident.name == item_name)
+                                def.variants
+                                    .iter()
+                                    .find(|item| item.ident.name == item_name)
+                                    .map(|item| (item.def_id, item.ident))
                             } else {
                                 def.non_enum_variant()
                                     .fields
                                     .iter()
                                     .find(|item| item.ident.name == item_name)
+                                    .map(|item| (item.did, item.ident))
                             };
                             field.map(|item| {
                                 if extra_fragment.is_some() {
@@ -444,7 +441,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                         } else {
                                             DefKind::Field
                                         },
-                                        item.did,
+                                        item.0,
                                     );
                                     Err(ErrorKind::AnchorFailure(
                                         AnchorFailure::RustdocAnchorConflict(res),
@@ -455,7 +452,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                                         Some(format!(
                                             "{}.{}",
                                             if def.is_enum() { "variant" } else { "structfield" },
-                                            item.ident
+                                            item.1
                                         )),
                                     ))
                                 }
@@ -464,13 +461,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         _ => None,
                     }
                 } else {
-                    // We already know this isn't in ValueNS, so no need to check variant_field
-                    return Err(ResolutionFailure::NotResolved {
-                        module_id,
-                        partial_res: Some(ty_res),
-                        unresolved: item_str.into(),
-                    }
-                    .into());
+                    None
                 }
             }
             Res::Def(DefKind::Trait, did) => cx
@@ -497,19 +488,51 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         Ok((res, Some(format!("{}.{}", kind, item_str))))
                     }
                 }),
+            Res::PrimTy(prim) => {
+                let path = prim.name_str();
+                let impls =
+                    primitive_impl(cx, &path).ok_or_else(|| ResolutionFailure::NotResolved {
+                        module_id,
+                        partial_res: Some(ty_res),
+                        unresolved: item_str.into(),
+                    })?;
+                for &impl_ in impls {
+                    let link = cx
+                        .tcx
+                        .associated_items(impl_)
+                        .find_by_name_and_namespace(
+                            cx.tcx,
+                            Ident::with_dummy_span(item_name),
+                            ns,
+                            impl_,
+                        )
+                        .map(|item| match item.kind {
+                            ty::AssocKind::Fn => "method",
+                            ty::AssocKind::Const => "associatedconstant",
+                            ty::AssocKind::Type => "associatedtype",
+                        })
+                        .map(|out| (ty_res, Some(format!("{}#{}.{}", path, out, item_str))));
+                    if let Some(link) = link {
+                        return Ok(link);
+                    }
+                }
+                debug!(
+                    "returning primitive error for {}::{} in {} namespace",
+                    path,
+                    item_name,
+                    ns.descr()
+                );
+                None
+            }
             _ => None,
         };
         res.unwrap_or_else(|| {
-            if ns == Namespace::ValueNS {
-                self.variant_field(path_str, current_item, module_id)
-            } else {
-                Err(ResolutionFailure::NotResolved {
-                    module_id,
-                    partial_res: Some(ty_res),
-                    unresolved: item_str.into(),
-                }
-                .into())
+            Err(ResolutionFailure::NotResolved {
+                module_id,
+                partial_res: Some(ty_res),
+                unresolved: item_str.into(),
             }
+            .into())
         })
     }
 
@@ -524,7 +547,6 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         ns: Namespace,
         path_str: &str,
         module_id: DefId,
-        current_item: &Option<String>,
         extra_fragment: &Option<String>,
     ) -> Option<Res> {
         let check_full_res_inner = |this: &Self, result: Result<Res, ErrorKind<'_>>| {
@@ -540,7 +562,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         };
         // cannot be used for macro namespace
         let check_full_res = |this: &Self, ns| {
-            let result = this.resolve(path_str, ns, current_item, module_id, extra_fragment);
+            let result = this.resolve(path_str, None, ns, module_id, extra_fragment);
             check_full_res_inner(this, result.map(|(res, _)| res))
         };
         let check_full_res_macro = |this: &Self| {
@@ -736,32 +758,45 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
             trace!("got parent node for {:?} {:?}, id {:?}", item.type_(), item.name, item.def_id);
         }
 
-        let current_item = match item.inner {
-            ModuleItem(..) => {
-                if item.attrs.inner_docs {
-                    if item.def_id.is_top_level_module() { item.name.clone() } else { None }
-                } else {
-                    match parent_node.or(self.mod_ids.last().copied()) {
-                        Some(parent) if !parent.is_top_level_module() => {
-                            // FIXME: can we pull the parent module's name from elsewhere?
-                            Some(self.cx.tcx.item_name(parent).to_string())
-                        }
-                        _ => None,
-                    }
-                }
-            }
-            ImplItem(Impl { ref for_, .. }) => {
-                for_.def_id().map(|did| self.cx.tcx.item_name(did).to_string())
-            }
-            // we don't display docs on `extern crate` items anyway, so don't process them.
-            ExternCrateItem(..) => {
-                debug!("ignoring extern crate item {:?}", item.def_id);
-                return self.fold_item_recur(item);
-            }
-            ImportItem(Import::Simple(ref name, ..)) => Some(name.clone()),
-            MacroItem(..) => None,
-            _ => item.name.clone(),
+        // find item's parent to resolve `Self` in item's docs below
+        let self_id = if item.is_fake() {
+            None
+        } else if matches!(
+            self.cx.tcx.def_kind(item.def_id),
+            DefKind::AssocConst
+                | DefKind::AssocFn
+                | DefKind::AssocTy
+                | DefKind::Variant
+                | DefKind::Field
+        ) {
+            self.cx.tcx.parent(item.def_id)
+        // HACK(jynelson): `clean` marks associated types as `TypedefItem`, not as `AssocTypeItem`.
+        // Fixing this breaks `fn render_deref_methods`.
+        // As a workaround, see if the parent of the item is an `impl`; if so this must be an associated item,
+        // regardless of what rustdoc wants to call it.
+        } else if let Some(parent) = self.cx.tcx.parent(item.def_id) {
+            debug!("saw parent {:?} for item {:?}", parent, item.def_id);
+            let parent_kind = self.cx.tcx.def_kind(parent);
+            Some(if parent_kind == DefKind::Impl { parent } else { item.def_id })
+        } else {
+            // FIXME: this should really be `Some(item.def_id)`, but for some reason that panics in `opt_item_name`
+            None
         };
+        // FIXME(75809): account for primitives too
+        let self_id = self_id.and_then(|id| {
+            let kind = self.cx.tcx.def_kind(id);
+            let id = if kind == DefKind::Impl {
+                if let ty::TyKind::Adt(def, _) = self.cx.tcx.type_of(id).kind() {
+                    def.did
+                } else {
+                    debug!("saw impl for non-adt {:?}", id);
+                    return None;
+                }
+            } else {
+                id
+            };
+            Some(Res::Def(self.cx.tcx.def_kind(id), id))
+        });
 
         if item.is_mod() && item.attrs.inner_docs {
             self.mod_ids.push(item.def_id);
@@ -770,53 +805,8 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
         let dox = item.attrs.collapsed_doc_value().unwrap_or_else(String::new);
         trace!("got documentation '{}'", dox);
 
-        // find item's parent to resolve `Self` in item's docs below
-        let parent_name = self.cx.as_local_hir_id(item.def_id).and_then(|item_hir| {
-            let parent_hir = self.cx.tcx.hir().get_parent_item(item_hir);
-            let item_parent = self.cx.tcx.hir().find(parent_hir);
-            match item_parent {
-                Some(hir::Node::Item(hir::Item {
-                    kind:
-                        hir::ItemKind::Impl {
-                            self_ty:
-                                hir::Ty {
-                                    kind:
-                                        hir::TyKind::Path(hir::QPath::Resolved(
-                                            _,
-                                            hir::Path { segments, .. },
-                                        )),
-                                    ..
-                                },
-                            ..
-                        },
-                    ..
-                })) => segments.first().map(|seg| seg.ident.to_string()),
-                Some(hir::Node::Item(hir::Item {
-                    ident, kind: hir::ItemKind::Enum(..), ..
-                }))
-                | Some(hir::Node::Item(hir::Item {
-                    ident, kind: hir::ItemKind::Struct(..), ..
-                }))
-                | Some(hir::Node::Item(hir::Item {
-                    ident, kind: hir::ItemKind::Union(..), ..
-                }))
-                | Some(hir::Node::Item(hir::Item {
-                    ident, kind: hir::ItemKind::Trait(..), ..
-                })) => Some(ident.to_string()),
-                _ => None,
-            }
-        });
-
         for (ori_link, link_range) in markdown_links(&dox) {
-            self.resolve_link(
-                &mut item,
-                &dox,
-                &current_item,
-                parent_node,
-                &parent_name,
-                ori_link,
-                link_range,
-            );
+            self.resolve_link(&mut item, &dox, self_id, parent_node, ori_link, link_range);
         }
 
         if item.is_mod() && !item.attrs.inner_docs {
@@ -840,9 +830,8 @@ impl LinkCollector<'_, '_> {
         &self,
         item: &mut Item,
         dox: &str,
-        current_item: &Option<String>,
+        mut self_id: Option<Res>,
         parent_node: Option<DefId>,
-        parent_name: &Option<String>,
         ori_link: String,
         link_range: Option<Range<usize>>,
     ) {
@@ -873,10 +862,10 @@ impl LinkCollector<'_, '_> {
         } else {
             (parts[0], None)
         };
-        let resolved_self;
         let link_text;
         let mut path_str;
         let disambiguator;
+        let resolved_crate;
         let (mut res, mut fragment) = {
             path_str = if let Ok((d, path)) = Disambiguator::from_str(&link) {
                 disambiguator = Some(d);
@@ -933,9 +922,20 @@ impl LinkCollector<'_, '_> {
 
             // replace `Self` with suitable item's parent name
             if path_str.starts_with("Self::") {
-                if let Some(ref name) = parent_name {
-                    resolved_self = format!("{}::{}", name, &path_str[6..]);
-                    path_str = &resolved_self;
+                if let Some(id) = self_id {
+                    debug!("resolving Self as {:?}", id);
+                    // FIXME: this overwrites the link text in both error messages and the link body
+                    path_str = &path_str["Self::".len()..];
+                } else {
+                    return resolution_failure(
+                        self,
+                        item,
+                        path_str,
+                        disambiguator,
+                        dox,
+                        link_range,
+                        smallvec![ResolutionFailure::NoSelf],
+                    );
                 }
             } else if path_str.starts_with("crate::") {
                 use rustc_span::def_id::CRATE_DEF_INDEX;
@@ -945,9 +945,13 @@ impl LinkCollector<'_, '_> {
                 // To work around this, remove it and resolve relative to the crate root instead.
                 // HACK(jynelson)(2): If we just strip `crate::` then suddenly primitives become ambiguous
                 // (consider `crate::char`). Instead, change it to `self::`. This works because 'self' is now the crate root.
-                resolved_self = format!("self::{}", &path_str["crate::".len()..]);
-                path_str = &resolved_self;
+                resolved_crate = format!("self::{}", &path_str["crate::".len()..]);
+                path_str = &resolved_crate;
                 module_id = DefId { krate: item.def_id.krate, index: CRATE_DEF_INDEX };
+                self_id = None;
+            } else {
+                // Don't skip over resolve
+                self_id = None;
             }
 
             match self.resolve_with_disambiguator(
@@ -955,7 +959,7 @@ impl LinkCollector<'_, '_> {
                 item,
                 dox,
                 path_str,
-                current_item,
+                self_id,
                 module_id,
                 extra_fragment,
                 &ori_link,
@@ -1083,7 +1087,7 @@ impl LinkCollector<'_, '_> {
         item: &mut Item,
         dox: &str,
         path_str: &str,
-        current_item: &Option<String>,
+        self_id: Option<Res>,
         base_node: DefId,
         extra_fragment: Option<String>,
         ori_link: &str,
@@ -1091,7 +1095,7 @@ impl LinkCollector<'_, '_> {
     ) -> Option<(Res, Option<String>)> {
         match disambiguator.map(Disambiguator::ns) {
             Some(ns @ (ValueNS | TypeNS)) => {
-                match self.resolve(path_str, ns, &current_item, base_node, &extra_fragment) {
+                match self.resolve(path_str, self_id, ns, base_node, &extra_fragment) {
                     Ok(res) => Some(res),
                     Err(ErrorKind::Resolve(box mut kind)) => {
                         // We only looked in one namespace. Try to give a better error if possible.
@@ -1104,7 +1108,6 @@ impl LinkCollector<'_, '_> {
                                     new_ns,
                                     path_str,
                                     base_node,
-                                    &current_item,
                                     &extra_fragment,
                                 ) {
                                     kind = ResolutionFailure::WrongNamespace(res, ns);
@@ -1140,8 +1143,8 @@ impl LinkCollector<'_, '_> {
                         .map(|res| (res, extra_fragment.clone())),
                     type_ns: match self.resolve(
                         path_str,
+                        self_id,
                         TypeNS,
-                        &current_item,
                         base_node,
                         &extra_fragment,
                     ) {
@@ -1157,8 +1160,8 @@ impl LinkCollector<'_, '_> {
                     },
                     value_ns: match self.resolve(
                         path_str,
+                        self_id,
                         ValueNS,
-                        &current_item,
                         base_node,
                         &extra_fragment,
                     ) {
@@ -1229,13 +1232,9 @@ impl LinkCollector<'_, '_> {
                     Err(mut kind) => {
                         // `macro_resolve` only looks in the macro namespace. Try to give a better error if possible.
                         for &ns in &[TypeNS, ValueNS] {
-                            if let Some(res) = self.check_full_res(
-                                ns,
-                                path_str,
-                                base_node,
-                                &current_item,
-                                &extra_fragment,
-                            ) {
+                            if let Some(res) =
+                                self.check_full_res(ns, path_str, base_node, &extra_fragment)
+                            {
                                 kind = ResolutionFailure::WrongNamespace(res, MacroNS);
                                 break;
                             }
@@ -1558,7 +1557,7 @@ fn resolution_failure(
                         name = start;
                         for &ns in &[TypeNS, ValueNS, MacroNS] {
                             if let Some(res) =
-                                collector.check_full_res(ns, &start, module_id, &None, &None)
+                                collector.check_full_res(ns, &start, module_id, &None)
                             {
                                 debug!("found partial_res={:?}", res);
                                 *partial_res = Some(res);
@@ -1665,6 +1664,7 @@ fn resolution_failure(
                 let note = match failure {
                     ResolutionFailure::NotResolved { .. } => unreachable!("handled above"),
                     ResolutionFailure::Dummy => continue,
+                    ResolutionFailure::NoSelf => "no `Self` type is in scope".into(),
                     ResolutionFailure::WrongNamespace(res, expected_ns) => {
                         if let Res::Def(kind, _) = res {
                             let disambiguator = Disambiguator::Kind(kind);
