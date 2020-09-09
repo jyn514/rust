@@ -1996,11 +1996,18 @@ pub struct Ty<'hir> {
 #[derive(Copy, Clone, PartialEq, Eq, Encodable, Decodable, Hash, Debug)]
 #[derive(HashStable_Generic)]
 pub enum PrimTy {
+    /// A primitive signed integer type. For example, `i32`.
     Int(IntTy),
+    /// A primitive unsigned integer type. For example, `u32`.
     Uint(UintTy),
+    /// A primitive floating-point type. For example, `f64`.
     Float(FloatTy),
+    /// The pointee of a string slice. Written as `str`.
     Str,
+    /// The primitive boolean type. Written as `bool`.
     Bool,
+    /// The primitive character type; holds a Unicode scalar value
+    /// (a non-surrogate code point). Written as `char`.
     Char,
 }
 

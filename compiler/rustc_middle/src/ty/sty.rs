@@ -86,6 +86,7 @@ impl BoundRegion {
 #[derive(HashStable)]
 #[rustc_diagnostic_item = "TyKind"]
 pub enum TyKind<'tcx> {
+    /*
     /// The primitive boolean type. Written as `bool`.
     Bool,
 
@@ -102,6 +103,11 @@ pub enum TyKind<'tcx> {
     /// A primitive floating-point type. For example, `f64`.
     Float(ast::FloatTy),
 
+    /// The pointee of a string slice. Written as `str`.
+    Str,
+    */
+    Primitive(PrimTy),
+
     /// Structures, enumerations and unions.
     ///
     /// InternalSubsts here, possibly against intuition, *may* contain `Param`s.
@@ -112,9 +118,6 @@ pub enum TyKind<'tcx> {
 
     /// An unsized FFI type that is opaque to Rust. Written as `extern type T`.
     Foreign(DefId),
-
-    /// The pointee of a string slice. Written as `str`.
-    Str,
 
     /// An array with the given length. Written as `[T; n]`.
     Array(Ty<'tcx>, &'tcx ty::Const<'tcx>),
