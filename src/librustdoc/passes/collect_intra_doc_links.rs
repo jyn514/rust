@@ -814,6 +814,15 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
             self.mod_ids.push(item.def_id);
         }
 
+        // We want to resolve in the lexical scope of the documentation.
+        // In the presence of re-exports, this is not the same as the module of the item.
+        // Since we merge them all into one for pulldown, store an explicit mapping between
+        // the index in `dox` and the original span in the source code.
+        let mut crates = BTreeMap::new();
+        let mut offset = 0;
+        for doc in &item.attrs.doc_strings {
+            crates.insert(doc.1.data().ctxt())
+        }
         let dox = item.attrs.collapsed_doc_value().unwrap_or_else(String::new);
         trace!("got documentation '{}'", dox);
 
