@@ -819,7 +819,7 @@ where
     /// types that can be `==` without being identical. See the [module-level
     /// documentation] for more.
     ///
-    /// [module-level documentation]: crate::collections#insert-and-complex-keys
+    /// [module-level documentation]: index.html#insert-and-complex-keys
     ///
     /// # Examples
     ///
