@@ -886,6 +886,7 @@ impl LinkCollector<'_, '_> {
         let link_text;
         let mut path_str;
         let disambiguator;
+        let resolved_crate;
         let (mut res, mut fragment) = {
             path_str = if let Ok((d, path)) = Disambiguator::from_str(&link) {
                 disambiguator = Some(d);
@@ -965,8 +966,8 @@ impl LinkCollector<'_, '_> {
                 // To work around this, remove it and resolve relative to the crate root instead.
                 // HACK(jynelson)(2): If we just strip `crate::` then suddenly primitives become ambiguous
                 // (consider `crate::char`). Instead, change it to `self::`. This works because 'self' is now the crate root.
-                resolved_self = format!("self::{}", &path_str["crate::".len()..]);
-                path_str = &resolved_self;
+                resolved_crate = format!("self::{}", &path_str["crate::".len()..]);
+                path_str = &resolved_crate;
                 module_id = DefId { krate: item.def_id.krate, index: CRATE_DEF_INDEX };
                 self_id = None;
             } else {
