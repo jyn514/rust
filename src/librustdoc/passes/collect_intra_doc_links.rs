@@ -304,48 +304,6 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             })?;
         debug!("split {} into {} and {}", path_str, path_root, item_name);
 
-        // TODO(#77267): this should really be part of `resolve_associated_item`
-        if let Some((path, prim)) = is_primitive(&path_root, TypeNS) {
-            let impls =
-                primitive_impl(cx, &path).ok_or_else(|| ResolutionFailure::NotResolved {
-                    module_id,
-                    partial_res: Some(prim),
-                    unresolved: item_str.into(),
-                })?;
-            for &impl_ in impls {
-                let link = cx
-                    .tcx
-                    .associated_items(impl_)
-                    .find_by_name_and_namespace(
-                        cx.tcx,
-                        Ident::with_dummy_span(item_name),
-                        ns,
-                        impl_,
-                    )
-                    .map(|item| match item.kind {
-                        ty::AssocKind::Fn => "method",
-                        ty::AssocKind::Const => "associatedconstant",
-                        ty::AssocKind::Type => "associatedtype",
-                    })
-                    .map(|out| (prim, Some(format!("{}#{}.{}", path, out, item_str))));
-                if let Some(link) = link {
-                    return Ok(link);
-                }
-            }
-            debug!(
-                "returning primitive error for {}::{} in {} namespace",
-                path,
-                item_name,
-                ns.descr()
-            );
-            return Err(ResolutionFailure::NotResolved {
-                module_id,
-                partial_res: Some(prim),
-                unresolved: item_str.into(),
-            }
-            .into());
-        }
-
         let ty_res = cx
             .enter_resolver(|resolver| {
                 // only types can have associated items
@@ -534,6 +492,48 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         Ok((res, Some(format!("{}.{}", kind, item_str))))
                     }
                 }),
+            Res::PrimTy(prim) => {
+                let path = prim.name_str();
+                let impls =
+                    primitive_impl(cx, &path).ok_or_else(|| ResolutionFailure::NotResolved {
+                        module_id,
+                        partial_res: Some(ty_res),
+                        unresolved: item_str.into(),
+                    })?;
+                for &impl_ in impls {
+                    let link = cx
+                        .tcx
+                        .associated_items(impl_)
+                        .find_by_name_and_namespace(
+                            cx.tcx,
+                            Ident::with_dummy_span(item_name),
+                            ns,
+                            impl_,
+                        )
+                        .map(|item| match item.kind {
+                            ty::AssocKind::Fn => "method",
+                            ty::AssocKind::Const => "associatedconstant",
+                            ty::AssocKind::Type => "associatedtype",
+                        })
+                        .map(|out| (ty_res, Some(format!("{}#{}.{}", path, out, item_str))));
+                    if let Some(link) = link {
+                        return Ok(link);
+                    }
+                }
+                debug!(
+                    "returning primitive error for {}::{} in {} namespace",
+                    path,
+                    item_name,
+                    ns.descr()
+                );
+                // primitives will never have a variant field
+                Some(Err(ResolutionFailure::NotResolved {
+                    module_id,
+                    partial_res: Some(ty_res),
+                    unresolved: item_str.into(),
+                }
+                .into()))
+            }
             _ => None,
         };
         res.unwrap_or_else(|| {
@@ -796,19 +796,21 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
         // As a workaround, see if the parent of the item is an `impl`; if so this must be an associated item,
         // regardless of what rustdoc wants to call it.
         } else if let Some(parent) = self.cx.tcx.parent(item.def_id) {
+            debug!("saw parent {:?} for item {:?}", parent, item.def_id);
             let parent_kind = self.cx.tcx.def_kind(parent);
             Some(if parent_kind == DefKind::Impl { parent } else { item.def_id })
         } else {
             // FIXME: this should really be `Some(item.def_id)`, but for some reason that panics in `opt_item_name`
             None
         };
-        // TODO: account for primitives too?
+        // FIXME(75809): account for primitives too
         let self_id = self_id.and_then(|id| {
             let kind = self.cx.tcx.def_kind(id);
             let id = if kind == DefKind::Impl {
                 if let ty::TyKind::Adt(def, _) = self.cx.tcx.type_of(id).kind() {
                     def.did
                 } else {
+                    debug!("saw impl for non-adt {:?}", id);
                     return None;
                 }
             } else {
