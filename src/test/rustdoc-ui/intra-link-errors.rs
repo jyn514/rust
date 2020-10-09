@@ -99,6 +99,10 @@ pub trait T {
 //~^ ERROR unresolved link
 //~| HELP to link to the macro
 //~| NOTE not in the value namespace
+/// [Self]
+//~^ ERROR unresolved link
+//~| no item named `Self` in scope
+//~| HELP to escape
 #[macro_export]
 macro_rules! m {
     () => {};
