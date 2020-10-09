@@ -126,7 +126,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             // So there's no partial res and we should say the whole link failed to resolve.
             split.next().map(|f| (f, Symbol::intern(f))).ok_or_else(no_res)?;
         if split.next().is_some() {
-            panic!("remaining_path must have at most 2 path segments");
+            panic!("remaining_path must have at most 2 path segments (got {})", remaining_path);
         }
 
         match ty_res {
@@ -311,7 +311,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             })
             .map(|(_, res)| res);
         let ty_res = match ty_res {
-            Err(()) | Ok(Res::Err) => {
+            Err(()) | Ok(Res::Err) | Ok(Res::Def(DefKind::Variant, _)) => {
                 if ns == Namespace::ValueNS {
                     // Look for variant fields
                     let mut iter = path_str.rmatch_indices("::");
@@ -319,6 +319,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     let (base, rest) = if let Some((idx, _)) = segments.last() {
                         (&path_str[..idx], &path_str[idx + 2..])
                     } else {
+                        debug!("didn't find three path segments; giving up");
                         return Err(ResolutionFailure::NotResolved {
                             module_id,
                             partial_res: None,
@@ -326,6 +327,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         }
                         .into());
                     };
+                    debug!("looking for enum variant {} for enum {}", rest, base);
 
                     let ty_res = cx
                         .enter_resolver(|resolver| {
@@ -538,12 +540,14 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         };
         res.unwrap_or_else(|| {
             if ns == Namespace::ValueNS {
+                debug!("considering variant fields for {}", item_str);
                 let mut iter = item_str.rmatch_indices("::");
                 let segments = iter.by_ref().take(2);
                 if let Some((idx, _)) = segments.last() {
                     // If we had `a::b::variant::field`, where `a` is `ty_res` and `b` is unresolved,
                     // don't treat it as `a::variant::field`
                     if !iter.next().is_some() {
+                        debug!("looking for variant field {:?}", &item_str[(idx + 2)..]);
                         return self.variant_field(ty_res, &item_str[(idx + 2)..], module_id);
                     }
                 }
