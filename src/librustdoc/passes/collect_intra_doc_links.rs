@@ -797,6 +797,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
             };
             Some(Res::Def(self.cx.tcx.def_kind(id), id))
         });
+            debug!("self_id={:?}", self_id);
 
         if item.is_mod() && item.attrs.inner_docs {
             self.mod_ids.push(item.def_id);
@@ -921,11 +922,14 @@ impl LinkCollector<'_, '_> {
             };
 
             // replace `Self` with suitable item's parent name
-            if path_str.starts_with("Self::") {
+            let starts_with_self = path_str.starts_with("Self::");
+            let starts_with_crate = path_str.starts_with("crate::");
+            if starts_with_self || path_str == "Self" {
                 if let Some(id) = self_id {
                     debug!("resolving Self as {:?}", id);
                     // FIXME: this overwrites the link text in both error messages and the link body
-                    path_str = &path_str["Self::".len()..];
+                    let idx = if starts_with_self { "Self::" } else { "Self" }.len();
+                    path_str = &path_str[idx..];
                 } else {
                     return resolution_failure(
                         self,
@@ -937,7 +941,7 @@ impl LinkCollector<'_, '_> {
                         smallvec![ResolutionFailure::NoSelf],
                     );
                 }
-            } else if path_str.starts_with("crate::") {
+            } else if starts_with_crate || path_str == "crate" {
                 use rustc_span::def_id::CRATE_DEF_INDEX;
 
                 // HACK(jynelson): rustc_resolve thinks that `crate` is the crate currently being documented.
@@ -945,8 +949,12 @@ impl LinkCollector<'_, '_> {
                 // To work around this, remove it and resolve relative to the crate root instead.
                 // HACK(jynelson)(2): If we just strip `crate::` then suddenly primitives become ambiguous
                 // (consider `crate::char`). Instead, change it to `self::`. This works because 'self' is now the crate root.
-                resolved_crate = format!("self::{}", &path_str["crate::".len()..]);
-                path_str = &resolved_crate;
+                if starts_with_crate {
+                    resolved_crate = format!("self::{}", &path_str["crate::".len()..]);
+                    path_str = &resolved_crate;
+                } else {
+                    path_str = "self";
+                }
                 module_id = DefId { krate: item.def_id.krate, index: CRATE_DEF_INDEX };
                 self_id = None;
             } else {

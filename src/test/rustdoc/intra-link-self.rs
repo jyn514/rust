@@ -115,3 +115,7 @@ impl MyTrait for MyStruct {
         unimplemented!()
     }
 }
+
+/// [Self]
+// @has 'foo/struct.Stdout.html' '//a[@href="https://doc.rust-lang.org/nightly/std/io/struct.Stdout.html"]' 'Self'
+pub use std::io::Stdout;
