@@ -461,13 +461,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         _ => None,
                     }
                 } else {
-                    // We already know this isn't in ValueNS, so no need to check variant_field
-                    return Err(ResolutionFailure::NotResolved {
-                        module_id,
-                        partial_res: Some(ty_res),
-                        unresolved: item_str.into(),
-                    }
-                    .into());
+                    None
                 }
             }
             Res::Def(DefKind::Trait, did) => cx
@@ -528,30 +522,11 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     item_name,
                     ns.descr()
                 );
-                // primitives will never have a variant field
-                Some(Err(ResolutionFailure::NotResolved {
-                    module_id,
-                    partial_res: Some(ty_res),
-                    unresolved: item_str.into(),
-                }
-                .into()))
+                None
             }
             _ => None,
         };
         res.unwrap_or_else(|| {
-            if ns == Namespace::ValueNS {
-                debug!("considering variant fields for {}", item_str);
-                let mut iter = item_str.rmatch_indices("::");
-                let segments = iter.by_ref().take(2);
-                if let Some((idx, _)) = segments.last() {
-                    // If we had `a::b::variant::field`, where `a` is `ty_res` and `b` is unresolved,
-                    // don't treat it as `a::variant::field`
-                    if !iter.next().is_some() {
-                        debug!("looking for variant field {:?}", &item_str[(idx + 2)..]);
-                        return self.variant_field(ty_res, &item_str[(idx + 2)..], module_id);
-                    }
-                }
-            }
             Err(ResolutionFailure::NotResolved {
                 module_id,
                 partial_res: Some(ty_res),
