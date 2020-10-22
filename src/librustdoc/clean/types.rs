@@ -124,7 +124,7 @@ impl Item {
         Item {
             def_id,
             inner,
-            name: Some(cx.tcx.item_name(def_id).clean(cx)),
+            name: cx.tcx.opt_item_name(def_id).clean(cx),
             source: cx.tcx.def_span(def_id).clean(cx),
             attrs: cx.tcx.get_attrs(def_id).clean(cx),
             visibility: cx.tcx.visibility(def_id).clean(cx),
