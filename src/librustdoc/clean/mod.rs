@@ -262,12 +262,13 @@ impl Clean<Item> for doctree::Module<'_> {
             }
         };
 
-        let what_rustc_thinks = Item::from_hir_id_and_kind(
+        let what_rustc_thinks = Item::from_hir_id_and_parts(
             self.id,
+            self.name,
             ModuleItem(Module { is_crate: self.is_crate, items }),
             cx,
         );
-        Item { attrs, source: span.clean(cx), ..what_rustc_thinks }
+        Item { name: Some(what_rustc_thinks.name.unwrap_or_default()), attrs, source: span.clean(cx), ..what_rustc_thinks }
     }
 }
 
@@ -897,8 +898,9 @@ impl Clean<Item> for doctree::Function<'_> {
             hir::Constness::NotConst
         };
         let (all_types, ret_types) = get_all_types(&generics, &decl, cx);
-        Item::from_def_id_and_kind(
+        Item::from_def_id_and_parts(
             did,
+            Some(self.name),
             FunctionItem(Function {
                 decl,
                 generics,
@@ -999,8 +1001,9 @@ impl Clean<Item> for doctree::Trait<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
         let attrs = self.attrs.clean(cx);
         let is_spotlight = attrs.has_doc_flag(sym::spotlight);
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             TraitItem(Trait {
                 auto: self.is_auto.clean(cx),
                 unsafety: self.unsafety,
@@ -1017,8 +1020,9 @@ impl Clean<Item> for doctree::Trait<'_> {
 
 impl Clean<Item> for doctree::TraitAlias<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             TraitAliasItem(TraitAlias {
                 generics: self.generics.clean(cx),
                 bounds: self.bounds.clean(cx),
@@ -1105,7 +1109,7 @@ impl Clean<Item> for hir::TraitItem<'_> {
                 AssocTypeItem(bounds.clean(cx), default.clean(cx))
             }
         };
-        Item::from_def_id_and_kind(local_did, inner, cx)
+        Item::from_def_id_and_parts(local_did, Some(self.ident.name), inner, cx)
     }
 }
 
@@ -1131,7 +1135,7 @@ impl Clean<Item> for hir::ImplItem<'_> {
                 TypedefItem(Typedef { type_, generics: Generics::default(), item_type }, true)
             }
         };
-        Item::from_def_id_and_kind(local_did, inner, cx)
+        Item::from_def_id_and_parts(local_did, Some(self.ident.name), inner, cx)
     }
 }
 
@@ -1285,7 +1289,7 @@ impl Clean<Item> for ty::AssocItem {
             }
         };
 
-        Item::from_def_id_and_kind(self.def_id, inner, cx)
+        Item::from_def_id_and_parts(self.def_id, Some(self.ident.name), inner, cx)
     }
 }
 
@@ -1715,14 +1719,15 @@ impl<'tcx> Clean<Constant> for ty::Const<'tcx> {
 
 impl Clean<Item> for hir::StructField<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(self.hir_id, StructFieldItem(self.ty.clean(cx)), cx)
+        Item::from_hir_id_and_parts(self.hir_id, Some(self.ident.name), StructFieldItem(self.ty.clean(cx)), cx)
     }
 }
 
 impl Clean<Item> for ty::FieldDef {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_def_id_and_kind(
+        Item::from_def_id_and_parts(
             self.did,
+        Some(self.ident.name),
             StructFieldItem(cx.tcx.type_of(self.did).clean(cx)),
             cx,
         )
@@ -1752,8 +1757,9 @@ impl Clean<Visibility> for ty::Visibility {
 
 impl Clean<Item> for doctree::Struct<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             StructItem(Struct {
                 struct_type: self.struct_type,
                 generics: self.generics.clean(cx),
@@ -1767,8 +1773,9 @@ impl Clean<Item> for doctree::Struct<'_> {
 
 impl Clean<Item> for doctree::Union<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             UnionItem(Union {
                 struct_type: self.struct_type,
                 generics: self.generics.clean(cx),
@@ -1792,8 +1799,9 @@ impl Clean<VariantStruct> for rustc_hir::VariantData<'_> {
 
 impl Clean<Item> for doctree::Enum<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             EnumItem(Enum {
                 variants: self.variants.iter().map(|v| v.clean(cx)).collect(),
                 generics: self.generics.clean(cx),
@@ -1806,7 +1814,7 @@ impl Clean<Item> for doctree::Enum<'_> {
 
 impl Clean<Item> for doctree::Variant<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(self.id, VariantItem(Variant { kind: self.def.clean(cx) }), cx)
+        Item::from_hir_id_and_parts(self.id, Some(self.name), VariantItem(Variant { kind: self.def.clean(cx) }), cx)
     }
 }
 
@@ -1836,7 +1844,8 @@ impl Clean<Item> for ty::VariantDef {
                     .collect(),
             }),
         };
-        Item::from_def_id_and_kind(self.def_id, VariantItem(Variant { kind }), cx)
+        Item::from_def_id_and_parts(self.def_id, Some(self.ident.name), VariantItem(Variant { kind }), cx)
+            
     }
 }
 
@@ -1941,8 +1950,9 @@ impl Clean<Item> for doctree::Typedef<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
         let type_ = self.ty.clean(cx);
         let item_type = type_.def_id().and_then(|did| inline::build_ty(cx, did));
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             TypedefItem(Typedef { type_, generics: self.gen.clean(cx), item_type }, false),
             cx,
         )
@@ -1951,8 +1961,9 @@ impl Clean<Item> for doctree::Typedef<'_> {
 
 impl Clean<Item> for doctree::OpaqueTy<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             OpaqueTyItem(OpaqueTy {
                 bounds: self.opaque_ty.bounds.clean(cx),
                 generics: self.opaque_ty.generics.clean(cx),
@@ -1974,8 +1985,9 @@ impl Clean<BareFunctionDecl> for hir::BareFnTy<'_> {
 impl Clean<Item> for doctree::Static<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
         debug!("cleaning static {}: {:?}", self.name.clean(cx), self);
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             StaticItem(Static {
                 type_: self.type_.clean(cx),
                 mutability: self.mutability,
@@ -1990,8 +2002,9 @@ impl Clean<Item> for doctree::Constant<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
         let def_id = cx.tcx.hir().local_def_id(self.id).to_def_id();
 
-        Item::from_def_id_and_kind(
+        Item::from_def_id_and_parts(
             def_id,
+            Some(self.name),
             ConstantItem(Constant {
                 type_: self.type_.clean(cx),
                 expr: print_const_expr(cx, self.expr),
@@ -2228,14 +2241,15 @@ impl Clean<Item> for doctree::ForeignItem<'_> {
             hir::ForeignItemKind::Type => ForeignTypeItem,
         };
 
-        Item::from_hir_id_and_kind(self.id, inner, cx)
+        Item::from_hir_id_and_parts(self.id, Some(self.name), inner, cx)
     }
 }
 
 impl Clean<Item> for doctree::Macro<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_def_id_and_kind(
+        Item::from_def_id_and_parts(
             self.def_id,
+            Some(self.name),
             MacroItem(Macro {
                 source: format!(
                     "macro_rules! {} {{\n{}}}",
@@ -2254,8 +2268,9 @@ impl Clean<Item> for doctree::Macro<'_> {
 
 impl Clean<Item> for doctree::ProcMacro<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_kind(
+        Item::from_hir_id_and_parts(
             self.id,
+            Some(self.name),
             ProcMacroItem(ProcMacro { kind: self.kind, helpers: self.helpers.clean(cx) }),
             cx,
         )

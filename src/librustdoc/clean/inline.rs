@@ -124,8 +124,12 @@ crate fn try_inline(
     let attrs = merge_attrs(cx, Some(parent_module), target_attrs, attrs_clone);
 
     cx.renderinfo.borrow_mut().inlined.insert(did);
-    let what_rustc_thinks = clean::Item::from_def_id_and_kind(did, inner, cx);
-    ret.push(clean::Item { attrs, visibility: clean::Public, ..what_rustc_thinks });
+    let what_rustc_thinks = clean::Item::from_def_id_and_parts(did, Some(name), inner, cx);
+    ret.push(clean::Item {
+        attrs,
+        visibility: clean::Public,
+        ..what_rustc_thinks
+    });
     Some(ret)
 }
 
@@ -437,8 +441,9 @@ crate fn build_impl(
 
     debug!("build_impl: impl {:?} for {:?}", trait_.def_id(), for_.def_id());
 
-    ret.push(clean::Item::from_def_id_and_kind(
+    ret.push(clean::Item::from_def_id_and_parts(
         did,
+        None,
         clean::ImplItem(clean::Impl {
             unsafety: hir::Unsafety::Normal,
             generics,

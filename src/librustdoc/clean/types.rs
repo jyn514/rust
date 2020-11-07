@@ -114,17 +114,19 @@ impl Item {
     }
 
     /// Convenience wrapper around [`Self::from_inner`] which converts `hir_id` to a [`DefId`]
-    pub fn from_hir_id_and_kind(hir_id: hir::HirId, inner: ItemEnum, cx: &DocContext<'_>) -> Item {
-        Item::from_def_id_and_kind(cx.tcx.hir().local_def_id(hir_id).to_def_id(), inner, cx)
+    pub fn from_hir_id_and_parts(hir_id: hir::HirId, name: Option<Symbol>, inner: ItemEnum, cx: &DocContext<'_>) -> Item {
+        Item::from_def_id_and_parts(cx.tcx.hir().local_def_id(hir_id).to_def_id(), name, inner, cx)
     }
 
-    pub fn from_def_id_and_kind(def_id: DefId, inner: ItemEnum, cx: &DocContext<'_>) -> Item {
+    pub fn from_def_id_and_parts(def_id: DefId, name: Option<Symbol>, inner: ItemEnum, cx: &DocContext<'_>) -> Item {
         use super::Clean;
 
+        //let name = cx.tcx.opt_item_name(def_id).clean(cx);
+        debug!("name={:?}, def_id={:?}", name, def_id);
         Item {
             def_id,
             inner,
-            name: cx.tcx.opt_item_name(def_id).clean(cx),
+            name: name.clean(cx),
             source: cx.tcx.def_span(def_id).clean(cx),
             attrs: cx.tcx.get_attrs(def_id).clean(cx),
             visibility: cx.tcx.visibility(def_id).clean(cx),
