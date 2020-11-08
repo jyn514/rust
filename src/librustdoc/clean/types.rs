@@ -114,20 +114,42 @@ impl Item {
     }
 
     /// Convenience wrapper around [`Self::from_inner`] which converts `hir_id` to a [`DefId`]
-    pub fn from_hir_id_and_parts(hir_id: hir::HirId, name: Option<Symbol>, inner: ItemEnum, cx: &DocContext<'_>) -> Item {
+    pub fn from_hir_id_and_parts(
+        hir_id: hir::HirId,
+        name: Option<Symbol>,
+        inner: ItemEnum,
+        cx: &DocContext<'_>,
+    ) -> Item {
         Item::from_def_id_and_parts(cx.tcx.hir().local_def_id(hir_id).to_def_id(), name, inner, cx)
     }
 
-    pub fn from_def_id_and_parts(def_id: DefId, name: Option<Symbol>, inner: ItemEnum, cx: &DocContext<'_>) -> Item {
+    pub fn from_def_id_and_parts(
+        def_id: DefId,
+        name: Option<Symbol>,
+        inner: ItemEnum,
+        cx: &DocContext<'_>,
+    ) -> Item {
         use super::Clean;
+        use hir::Node;
 
-        //let name = cx.tcx.opt_item_name(def_id).clean(cx);
         debug!("name={:?}, def_id={:?}", name, def_id);
+
+        // `span_if_local()` lies about functions and only gives the span of the function signature
+        let source = cx.tcx.hir().get_if_local(def_id).map_or_else(
+            || cx.tcx.def_span(def_id),
+            |node| match node {
+                Node::Item(item) => item.span,
+                Node::ImplItem(item) => item.span,
+                Node::TraitItem(item) => item.span,
+                _ => cx.tcx.hir().span_if_local(def_id).unwrap(),
+            },
+        );
+
         Item {
             def_id,
             inner,
             name: name.clean(cx),
-            source: cx.tcx.def_span(def_id).clean(cx),
+            source: source.clean(cx),
             attrs: cx.tcx.get_attrs(def_id).clean(cx),
             visibility: cx.tcx.visibility(def_id).clean(cx),
             stability: cx.tcx.lookup_stability(def_id).cloned(),

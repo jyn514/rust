@@ -268,7 +268,12 @@ impl Clean<Item> for doctree::Module<'_> {
             ModuleItem(Module { is_crate: self.is_crate, items }),
             cx,
         );
-        Item { name: Some(what_rustc_thinks.name.unwrap_or_default()), attrs, source: span.clean(cx), ..what_rustc_thinks }
+        Item {
+            name: Some(what_rustc_thinks.name.unwrap_or_default()),
+            attrs,
+            source: span.clean(cx),
+            ..what_rustc_thinks
+        }
     }
 }
 
@@ -1719,7 +1724,12 @@ impl<'tcx> Clean<Constant> for ty::Const<'tcx> {
 
 impl Clean<Item> for hir::StructField<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_parts(self.hir_id, Some(self.ident.name), StructFieldItem(self.ty.clean(cx)), cx)
+        Item::from_hir_id_and_parts(
+            self.hir_id,
+            Some(self.ident.name),
+            StructFieldItem(self.ty.clean(cx)),
+            cx,
+        )
     }
 }
 
@@ -1727,7 +1737,7 @@ impl Clean<Item> for ty::FieldDef {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
         Item::from_def_id_and_parts(
             self.did,
-        Some(self.ident.name),
+            Some(self.ident.name),
             StructFieldItem(cx.tcx.type_of(self.did).clean(cx)),
             cx,
         )
@@ -1814,7 +1824,12 @@ impl Clean<Item> for doctree::Enum<'_> {
 
 impl Clean<Item> for doctree::Variant<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_parts(self.id, Some(self.name), VariantItem(Variant { kind: self.def.clean(cx) }), cx)
+        Item::from_hir_id_and_parts(
+            self.id,
+            Some(self.name),
+            VariantItem(Variant { kind: self.def.clean(cx) }),
+            cx,
+        )
     }
 }
 
@@ -1844,8 +1859,12 @@ impl Clean<Item> for ty::VariantDef {
                     .collect(),
             }),
         };
-        Item::from_def_id_and_parts(self.def_id, Some(self.ident.name), VariantItem(Variant { kind }), cx)
-            
+        Item::from_def_id_and_parts(
+            self.def_id,
+            Some(self.ident.name),
+            VariantItem(Variant { kind }),
+            cx,
+        )
     }
 }
 
