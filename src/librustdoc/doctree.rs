@@ -28,25 +28,19 @@ pub struct Module<'hir> {
     pub statics: Vec<Static<'hir>>,
     pub constants: Vec<Constant<'hir>>,
     pub traits: Vec<Trait<'hir>>,
-    pub vis: &'hir hir::Visibility<'hir>,
     pub impls: Vec<Impl<'hir>>,
     pub foreigns: Vec<ForeignItem<'hir>>,
     pub macros: Vec<Macro<'hir>>,
-    pub proc_macros: Vec<ProcMacro<'hir>>,
+    pub proc_macros: Vec<ProcMacro>,
     pub trait_aliases: Vec<TraitAlias<'hir>>,
     pub is_crate: bool,
 }
 
 impl Module<'hir> {
-    pub fn new(
-        name: Option<Symbol>,
-        attrs: &'hir [ast::Attribute],
-        vis: &'hir hir::Visibility<'hir>,
-    ) -> Module<'hir> {
+    pub fn new(name: Option<Symbol>, attrs: &'hir [ast::Attribute]) -> Module<'hir> {
         Module {
             name,
             id: hir::CRATE_HIR_ID,
-            vis,
             where_outer: rustc_span::DUMMY_SP,
             where_inner: rustc_span::DUMMY_SP,
             attrs,
@@ -83,53 +77,39 @@ pub enum StructType {
 }
 
 pub struct Struct<'hir> {
-    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub struct_type: StructType,
     pub name: Symbol,
     pub generics: &'hir hir::Generics<'hir>,
-    pub attrs: &'hir [ast::Attribute],
     pub fields: &'hir [hir::StructField<'hir>],
-    pub span: Span,
 }
 
 pub struct Union<'hir> {
-    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub struct_type: StructType,
     pub name: Symbol,
     pub generics: &'hir hir::Generics<'hir>,
-    pub attrs: &'hir [ast::Attribute],
     pub fields: &'hir [hir::StructField<'hir>],
-    pub span: Span,
 }
 
 pub struct Enum<'hir> {
-    pub vis: &'hir hir::Visibility<'hir>,
     pub variants: Vec<Variant<'hir>>,
     pub generics: &'hir hir::Generics<'hir>,
-    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
-    pub span: Span,
     pub name: Symbol,
 }
 
 pub struct Variant<'hir> {
     pub name: Symbol,
     pub id: hir::HirId,
-    pub attrs: &'hir [ast::Attribute],
     pub def: &'hir hir::VariantData<'hir>,
-    pub span: Span,
 }
 
 pub struct Function<'hir> {
     pub decl: &'hir hir::FnDecl<'hir>,
-    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
     pub name: Symbol,
-    pub vis: &'hir hir::Visibility<'hir>,
     pub header: hir::FnHeader,
-    pub span: Span,
     pub generics: &'hir hir::Generics<'hir>,
     pub body: hir::BodyId,
 }
@@ -139,18 +119,12 @@ pub struct Typedef<'hir> {
     pub gen: &'hir hir::Generics<'hir>,
     pub name: Symbol,
     pub id: hir::HirId,
-    pub attrs: &'hir [ast::Attribute],
-    pub span: Span,
-    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 pub struct OpaqueTy<'hir> {
     pub opaque_ty: &'hir hir::OpaqueTy<'hir>,
     pub name: Symbol,
     pub id: hir::HirId,
-    pub attrs: &'hir [ast::Attribute],
-    pub span: Span,
-    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 #[derive(Debug)]
@@ -169,10 +143,7 @@ pub struct Constant<'hir> {
     pub type_: &'hir hir::Ty<'hir>,
     pub expr: hir::BodyId,
     pub name: Symbol,
-    pub attrs: &'hir [ast::Attribute],
-    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
-    pub span: Span,
 }
 
 pub struct Trait<'hir> {
@@ -184,18 +155,13 @@ pub struct Trait<'hir> {
     pub bounds: &'hir [hir::GenericBound<'hir>],
     pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
-    pub span: Span,
-    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 pub struct TraitAlias<'hir> {
     pub name: Symbol,
     pub generics: &'hir hir::Generics<'hir>,
     pub bounds: &'hir [hir::GenericBound<'hir>],
-    pub attrs: &'hir [ast::Attribute],
     pub id: hir::HirId,
-    pub span: Span,
-    pub vis: &'hir hir::Visibility<'hir>,
 }
 
 #[derive(Debug)]
@@ -215,24 +181,19 @@ pub struct Impl<'hir> {
 }
 
 pub struct ForeignItem<'hir> {
-    pub vis: &'hir hir::Visibility<'hir>,
     pub id: hir::HirId,
     pub name: Symbol,
     pub kind: &'hir hir::ForeignItemKind<'hir>,
-    pub attrs: &'hir [ast::Attribute],
-    pub span: Span,
 }
 
 // For Macro we store the DefId instead of the NodeId, since we also create
 // these imported macro_rules (which only have a DUMMY_NODE_ID).
 pub struct Macro<'hir> {
     pub name: Symbol,
-    pub hid: hir::HirId,
     pub def_id: hir::def_id::DefId,
-    pub attrs: &'hir [ast::Attribute],
-    pub span: Span,
     pub matchers: Vec<Span>,
     pub imported_from: Option<Symbol>,
+    pub attrs: &'hir [ast::Attribute],
 }
 
 pub struct ExternCrate<'hir> {
@@ -256,13 +217,11 @@ pub struct Import<'hir> {
     pub span: Span,
 }
 
-pub struct ProcMacro<'hir> {
+pub struct ProcMacro {
     pub name: Symbol,
     pub id: hir::HirId,
     pub kind: MacroKind,
     pub helpers: Vec<Symbol>,
-    pub attrs: &'hir [ast::Attribute],
-    pub span: Span,
 }
 
 pub fn struct_type_from_def(vdata: &hir::VariantData<'_>) -> StructType {
