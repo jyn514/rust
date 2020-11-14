@@ -1730,6 +1730,7 @@ impl Clean<Item> for hir::StructField<'_> {
             StructFieldItem(self.ty.clean(cx)),
             cx,
         );
+        // Don't show `pub` for fields on enum variants; they are always public
         Item { visibility: self.vis.clean(cx), ..what_rustc_thinks }
     }
 }
@@ -1742,6 +1743,7 @@ impl Clean<Item> for ty::FieldDef {
             StructFieldItem(cx.tcx.type_of(self.did).clean(cx)),
             cx,
         );
+        // Don't show `pub` for fields on enum variants; they are always public
         Item { visibility: self.vis.clean(cx), ..what_rustc_thinks }
     }
 }
@@ -2298,7 +2300,7 @@ impl Clean<Item> for doctree::Macro<'_> {
             }),
             cx,
         );
-        // need to override attrs explicitly in case this was inlined
+        // rustc_metadata strips attributes on macros; use the attributes from the HIR instead
         Item { attrs: self.attrs.clean(cx), ..what_rustc_thinks }
     }
 }
