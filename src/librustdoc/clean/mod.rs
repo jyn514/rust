@@ -2276,7 +2276,7 @@ impl Clean<Item> for doctree::ForeignItem<'_> {
 
 impl Clean<Item> for doctree::Macro<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_def_id_and_parts(
+        let what_rustc_thinks = Item::from_def_id_and_parts(
             self.def_id,
             Some(self.name),
             MacroItem(Macro {
@@ -2291,7 +2291,9 @@ impl Clean<Item> for doctree::Macro<'_> {
                 imported_from: self.imported_from.clean(cx),
             }),
             cx,
-        )
+        );
+        // need to override attrs explicitly in case this was inlined
+        Item { attrs: self.attrs.clean(cx), ..what_rustc_thinks }
     }
 }
 
