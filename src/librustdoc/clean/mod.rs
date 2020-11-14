@@ -1753,7 +1753,10 @@ impl Clean<Visibility> for hir::Visibility<'_> {
         match self.node {
             hir::VisibilityKind::Public => Visibility::Public,
             hir::VisibilityKind::Inherited => Visibility::Inherited,
-            hir::VisibilityKind::Crate(_) => Visibility::Crate,
+            hir::VisibilityKind::Crate(_) => {
+                let krate = DefId::local(CRATE_DEF_INDEX);
+                Visibility::Restricted(krate, cx.tcx.def_path(krate))
+            }
             hir::VisibilityKind::Restricted { ref path, .. } => {
                 let path = path.clean(cx);
                 let did = register_res(cx, path.res);
@@ -1767,14 +1770,10 @@ impl Clean<Visibility> for ty::Visibility {
     fn clean(&self, cx: &DocContext<'_>) -> Visibility {
         match *self {
             ty::Visibility::Public => Visibility::Public,
-            ty::Visibility::Restricted(module) => {
-                if module.is_top_level_module() {
-                    Visibility::Crate
-                } else {
-                    Visibility::Restricted(module, cx.tcx.def_path(module))
-                }
-            }
             ty::Visibility::Invisible => Visibility::Inherited,
+            ty::Visibility::Restricted(module) => {
+                Visibility::Restricted(module, cx.tcx.def_path(module))
+            }
         }
     }
 }

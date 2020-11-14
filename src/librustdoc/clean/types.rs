@@ -1529,7 +1529,6 @@ impl From<hir::PrimTy> for PrimitiveType {
 pub enum Visibility {
     Public,
     Inherited,
-    Crate,
     Restricted(DefId, rustc_hir::definitions::DefPath),
 }
 
