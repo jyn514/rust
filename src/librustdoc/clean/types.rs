@@ -113,7 +113,8 @@ impl Item {
         self.attrs.doc_value()
     }
 
-    /// Convenience wrapper around [`Self::from_inner`] which converts `hir_id` to a [`DefId`]
+    /// Convenience wrapper around [`Self::from_def_id_and_parts`] which converts
+    /// `hir_id` to a [`DefId`]
     pub fn from_hir_id_and_parts(
         hir_id: hir::HirId,
         name: Option<Symbol>,
@@ -130,18 +131,15 @@ impl Item {
         cx: &DocContext<'_>,
     ) -> Item {
         use super::Clean;
-        use hir::Node;
 
         debug!("name={:?}, def_id={:?}", name, def_id);
 
         // `span_if_local()` lies about functions and only gives the span of the function signature
-        let source = cx.tcx.hir().get_if_local(def_id).map_or_else(
+        let source = def_id.as_local().map_or_else(
             || cx.tcx.def_span(def_id),
-            |node| match node {
-                Node::Item(item) => item.span,
-                Node::ImplItem(item) => item.span,
-                Node::TraitItem(item) => item.span,
-                _ => cx.tcx.hir().span_if_local(def_id).unwrap(),
+            |local| {
+                let hir = cx.tcx.hir();
+                hir.span_with_body(hir.local_def_id_to_hir_id(local))
             },
         );
 

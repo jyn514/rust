@@ -125,7 +125,7 @@ crate fn try_inline(
 
     cx.renderinfo.borrow_mut().inlined.insert(did);
     let what_rustc_thinks = clean::Item::from_def_id_and_parts(did, Some(name), inner, cx);
-    ret.push(clean::Item { attrs, visibility: clean::Public, ..what_rustc_thinks });
+    ret.push(clean::Item { attrs, ..what_rustc_thinks });
     Some(ret)
 }
 
