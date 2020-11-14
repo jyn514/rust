@@ -1724,23 +1724,25 @@ impl<'tcx> Clean<Constant> for ty::Const<'tcx> {
 
 impl Clean<Item> for hir::StructField<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_parts(
+        let what_rustc_thinks = Item::from_hir_id_and_parts(
             self.hir_id,
             Some(self.ident.name),
             StructFieldItem(self.ty.clean(cx)),
             cx,
-        )
+        );
+        Item { visibility: self.vis.clean(cx), ..what_rustc_thinks }
     }
 }
 
 impl Clean<Item> for ty::FieldDef {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_def_id_and_parts(
+        let what_rustc_thinks = Item::from_def_id_and_parts(
             self.did,
             Some(self.ident.name),
             StructFieldItem(cx.tcx.type_of(self.did).clean(cx)),
             cx,
-        )
+        );
+        Item { visibility: self.vis.clean(cx), ..what_rustc_thinks }
     }
 }
 
@@ -1834,12 +1836,14 @@ impl Clean<Item> for doctree::Enum<'_> {
 
 impl Clean<Item> for doctree::Variant<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        Item::from_hir_id_and_parts(
+        let what_rustc_thinks = Item::from_hir_id_and_parts(
             self.id,
             Some(self.name),
             VariantItem(Variant { kind: self.def.clean(cx) }),
             cx,
-        )
+        );
+        // don't show `pub` for variants, which are always public
+        Item { visibility: Inherited, ..what_rustc_thinks }
     }
 }
 
@@ -1860,7 +1864,7 @@ impl Clean<Item> for ty::VariantDef {
                         source: cx.tcx.def_span(field.did).clean(cx),
                         name: Some(field.ident.name.clean(cx)),
                         attrs: cx.tcx.get_attrs(field.did).clean(cx),
-                        visibility: field.vis.clean(cx),
+                        visibility: Visibility::Inherited,
                         def_id: field.did,
                         stability: get_stability(cx, field.did),
                         deprecation: get_deprecation(cx, field.did),
@@ -1869,12 +1873,14 @@ impl Clean<Item> for ty::VariantDef {
                     .collect(),
             }),
         };
-        Item::from_def_id_and_parts(
+        let what_rustc_thinks = Item::from_def_id_and_parts(
             self.def_id,
             Some(self.ident.name),
             VariantItem(Variant { kind }),
             cx,
-        )
+        );
+        // don't show `pub` for fields, which are always public
+        Item { visibility: Inherited, ..what_rustc_thinks }
     }
 }
 
