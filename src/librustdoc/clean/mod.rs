@@ -1760,8 +1760,18 @@ impl Clean<Visibility> for hir::Visibility<'_> {
 }
 
 impl Clean<Visibility> for ty::Visibility {
-    fn clean(&self, _: &DocContext<'_>) -> Visibility {
-        if *self == ty::Visibility::Public { Public } else { Inherited }
+    fn clean(&self, cx: &DocContext<'_>) -> Visibility {
+        match *self {
+            ty::Visibility::Public => Visibility::Public,
+            ty::Visibility::Restricted(module) => {
+                if module.is_top_level_module() {
+                    Visibility::Crate
+                } else {
+                    Visibility::Restricted(module, cx.tcx.def_path(module))
+                }
+            }
+            ty::Visibility::Invisible => Visibility::Inherited,
+        }
     }
 }
 
