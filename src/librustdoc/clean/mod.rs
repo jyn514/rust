@@ -2283,7 +2283,7 @@ impl Clean<Item> for doctree::ForeignItem<'_> {
 
 impl Clean<Item> for doctree::Macro<'_> {
     fn clean(&self, cx: &DocContext<'_>) -> Item {
-        let what_rustc_thinks = Item::from_def_id_and_parts(
+        Item::from_def_id_and_parts(
             self.def_id,
             Some(self.name),
             MacroItem(Macro {
@@ -2298,9 +2298,7 @@ impl Clean<Item> for doctree::Macro<'_> {
                 imported_from: self.imported_from.clean(cx),
             }),
             cx,
-        );
-        // rustc_metadata strips attributes on macros; use the attributes from the HIR instead
-        Item { attrs: self.attrs.clean(cx), ..what_rustc_thinks }
+        )
     }
 }
 
