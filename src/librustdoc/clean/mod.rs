@@ -1731,7 +1731,7 @@ impl Clean<Item> for hir::StructField<'_> {
             cx,
         );
         // Don't show `pub` for fields on enum variants; they are always public
-        Item { visibility: self.vis.clean(cx), ..what_rustc_thinks }
+        Item { visibility: hir_visibility(&self.vis, self.hir_id, cx), ..what_rustc_thinks }
     }
 }
 
@@ -1744,34 +1744,34 @@ impl Clean<Item> for ty::FieldDef {
             cx,
         );
         // Don't show `pub` for fields on enum variants; they are always public
-        Item { visibility: self.vis.clean(cx), ..what_rustc_thinks }
+        let hir_id = self.did.as_local().map(|local| cx.tcx.hir().local_def_id_to_hir_id(local));
+        Item { visibility: ty_visibility(self.vis, hir_id, cx), ..what_rustc_thinks }
     }
 }
 
-impl Clean<Visibility> for hir::Visibility<'_> {
-    fn clean(&self, cx: &DocContext<'_>) -> Visibility {
-        match self.node {
-            hir::VisibilityKind::Public => Visibility::Public,
-            hir::VisibilityKind::Inherited => Visibility::Inherited,
-            hir::VisibilityKind::Crate(_) => {
-                let krate = DefId::local(CRATE_DEF_INDEX);
-                Visibility::Restricted(krate, cx.tcx.def_path(krate))
-            }
-            hir::VisibilityKind::Restricted { ref path, .. } => {
-                let path = path.clean(cx);
-                let did = register_res(cx, path.res);
-                Visibility::Restricted(did, cx.tcx.def_path(did))
-            }
-        }
-    }
+fn hir_visibility(
+    vis: &hir::Visibility<'_>,
+    hir_id: hir::HirId,
+    cx: &DocContext<'_>,
+) -> Visibility {
+    // FIXME: I think this handles `Inherited` wrong
+    ty_visibility(ty::Visibility::from_hir(vis, hir_id, cx.tcx), Some(hir_id), cx)
 }
 
-impl Clean<Visibility> for ty::Visibility {
-    fn clean(&self, cx: &DocContext<'_>) -> Visibility {
-        match *self {
-            ty::Visibility::Public => Visibility::Public,
-            ty::Visibility::Invisible => Visibility::Inherited,
-            ty::Visibility::Restricted(module) => {
+fn ty_visibility(
+    vis: ty::Visibility,
+    hir_id: Option<hir::HirId>,
+    cx: &DocContext<'_>,
+) -> Visibility {
+    match vis {
+        ty::Visibility::Public => Visibility::Public,
+        ty::Visibility::Invisible => Visibility::Inherited,
+        ty::Visibility::Restricted(module) => {
+            let hir_id = hir_id.unwrap_or_else(|| panic!("only local items can have restricted visibility (while calculating vis of {:?})", module));
+            let parent = cx.tcx.parent_module(hir_id).to_def_id();
+            if parent == module {
+                Visibility::RestrictSelf
+            } else {
                 Visibility::Restricted(module, cx.tcx.def_path(module))
             }
         }
@@ -2093,7 +2093,7 @@ impl Clean<Vec<Item>> for doctree::Impl<'_> {
             attrs: self.attrs.clean(cx),
             source: self.span.clean(cx),
             def_id: def_id.to_def_id(),
-            visibility: self.vis.clean(cx),
+            visibility: hir_visibility(self.vis, self.id, cx),
             stability: cx.stability(self.id),
             deprecation: cx.deprecation(self.id).clean(cx),
             inner: ImplItem(Impl {
@@ -2149,7 +2149,7 @@ impl Clean<Vec<Item>> for doctree::ExternCrate<'_> {
             attrs: self.attrs.clean(cx),
             source: self.span.clean(cx),
             def_id: DefId { krate: self.cnum, index: CRATE_DEF_INDEX },
-            visibility: self.vis.clean(cx),
+            visibility: hir_visibility(self.vis, self.hir_id, cx),
             stability: None,
             deprecation: None,
             inner: ExternCrateItem(self.name.clean(cx), self.path.clone()),
@@ -2220,7 +2220,7 @@ impl Clean<Vec<Item>> for doctree::Import<'_> {
                         attrs: self.attrs.clean(cx),
                         source: self.span.clean(cx),
                         def_id: cx.tcx.hir().local_def_id(self.id).to_def_id(),
-                        visibility: self.vis.clean(cx),
+                        visibility: hir_visibility(self.vis, self.id, cx),
                         stability: None,
                         deprecation: None,
                         inner: ImportItem(Import::new_simple(
@@ -2240,7 +2240,7 @@ impl Clean<Vec<Item>> for doctree::Import<'_> {
             attrs: self.attrs.clean(cx),
             source: self.span.clean(cx),
             def_id: DefId::local(CRATE_DEF_INDEX),
-            visibility: self.vis.clean(cx),
+            visibility: hir_visibility(self.vis, self.id, cx),
             stability: None,
             deprecation: None,
             inner: ImportItem(inner),

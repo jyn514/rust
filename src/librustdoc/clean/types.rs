@@ -142,6 +142,7 @@ impl Item {
                 hir.span_with_body(hir.local_def_id_to_hir_id(local))
             },
         );
+        let hir_id = def_id.as_local().map(|local| cx.tcx.hir().local_def_id_to_hir_id(local));
 
         Item {
             def_id,
@@ -149,7 +150,7 @@ impl Item {
             name: name.clean(cx),
             source: source.clean(cx),
             attrs: cx.tcx.get_attrs(def_id).clean(cx),
-            visibility: cx.tcx.visibility(def_id).clean(cx),
+            visibility: super::ty_visibility(cx.tcx.visibility(def_id), hir_id, cx),
             stability: cx.tcx.lookup_stability(def_id).cloned(),
             deprecation: cx.tcx.lookup_deprecation(def_id).clean(cx),
         }
@@ -1527,8 +1528,17 @@ impl From<hir::PrimTy> for PrimitiveType {
 
 #[derive(Clone, Debug)]
 pub enum Visibility {
+    /// `pub`
     Public,
+    /// Usually means private, but for enum variants it instead means 'always public'.
     Inherited,
+    /// `pub(self)`
+    ///
+    /// This has to be calculated ahead of time because `html` doesn't have access to a `tcx`.
+    /// Even if it did, `print_with_space` doesn't know the original item this was attached to
+    /// and so can't calculate whether the `DefPath` is `self` or not.
+    RestrictSelf,
+    /// `pub(in path)`
     Restricted(DefId, rustc_hir::definitions::DefPath),
 }
 

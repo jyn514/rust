@@ -1089,11 +1089,10 @@ impl Function<'_> {
 
 impl clean::Visibility {
     crate fn print_with_space(&self) -> impl fmt::Display + '_ {
-        use rustc_span::symbol::kw;
-
         display_fn(move |f| match *self {
             clean::Public => f.write_str("pub "),
             clean::Inherited => Ok(()),
+            clean::Visibility::RestrictSelf => f.write_str("pub(self) "),
             // If this is `pub(crate)`, `path` will be empty.
             clean::Visibility::Restricted(did, _) if did.index == CRATE_DEF_INDEX => {
                 write!(f, "pub(crate) ")
@@ -1101,12 +1100,7 @@ impl clean::Visibility {
             clean::Visibility::Restricted(did, ref path) => {
                 f.write_str("pub(")?;
                 debug!("path={:?}", path);
-                let first_name =
-                    path.data[0].data.get_opt_name().expect("modules are always named");
-                if path.data.len() != 1 || (first_name != kw::SelfLower && first_name != kw::Super)
-                {
-                    f.write_str("in ")?;
-                }
+
                 // modified from `resolved_path()` to work with `DefPathData`
                 let last_name = path.data.last().unwrap().data.get_opt_name().unwrap();
                 for seg in &path.data[..path.data.len() - 1] {
