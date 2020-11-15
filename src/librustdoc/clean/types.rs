@@ -112,6 +112,26 @@ impl Item {
         self.attrs.doc_value()
     }
 
+    /// Convenience wrapper around [`Self::from_inner`] which converts `hir_id` to a [`DefId`]
+    pub fn from_hir_id_and_kind(hir_id: hir::HirId, kind: ItemKind, cx: &DocContext<'_>) -> Item {
+        Item::from_def_id_and_kind(cx.tcx.hir().local_def_id(hir_id).to_def_id(), kind, cx)
+    }
+
+    pub fn from_def_id_and_kind(def_id: DefId, kind: ItemKind, cx: &DocContext<'_>) -> Item {
+        use super::Clean;
+
+        Item {
+            def_id,
+            kind,
+            name: Some(cx.tcx.item_name(def_id).clean(cx)),
+            source: cx.tcx.def_span(def_id).clean(cx),
+            attrs: cx.tcx.get_attrs(def_id).clean(cx),
+            visibility: cx.tcx.visibility(def_id).clean(cx),
+            stability: cx.tcx.lookup_stability(def_id).cloned(),
+            deprecation: cx.tcx.lookup_deprecation(def_id).clean(cx),
+        }
+    }
+
     /// Finds all `doc` attributes as NameValues and returns their corresponding values, joined
     /// with newlines.
     pub fn collapsed_doc_value(&self) -> Option<String> {
