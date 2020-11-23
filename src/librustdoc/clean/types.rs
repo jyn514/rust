@@ -118,7 +118,7 @@ impl Item {
         hir_id: hir::HirId,
         name: Option<Symbol>,
         kind: ItemKind,
-        cx: &DocContext<'_>,
+        cx: &mut DocContext<'_>,
     ) -> Item {
         Item::from_def_id_and_parts(cx.tcx.hir().local_def_id(hir_id).to_def_id(), name, kind, cx)
     }
@@ -127,7 +127,7 @@ impl Item {
         def_id: DefId,
         name: Option<Symbol>,
         kind: ItemKind,
-        cx: &DocContext<'_>,
+        cx: &mut DocContext<'_>,
     ) -> Item {
         use super::Clean;
 
@@ -800,7 +800,7 @@ crate enum GenericBound {
 }
 
 impl GenericBound {
-    crate fn maybe_sized(cx: &DocContext<'_>) -> GenericBound {
+    crate fn maybe_sized(cx: &mut DocContext<'_>) -> GenericBound {
         let did = cx.tcx.require_lang_item(LangItem::Sized, None);
         let empty = cx.tcx.intern_substs(&[]);
         let path = external_path(cx, cx.tcx.item_name(did), Some(did), false, vec![], empty);
@@ -814,7 +814,7 @@ impl GenericBound {
         )
     }
 
-    crate fn is_sized_bound(&self, cx: &DocContext<'_>) -> bool {
+    crate fn is_sized_bound(&self, cx: &mut DocContext<'_>) -> bool {
         use rustc_hir::TraitBoundModifier as TBM;
         if let GenericBound::TraitBound(PolyTrait { ref trait_, .. }, TBM::None) = *self {
             if trait_.def_id() == cx.tcx.lang_items().sized_trait() {

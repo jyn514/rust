@@ -102,16 +102,16 @@ crate fn krate(mut cx: &mut DocContext<'_>) -> Crate {
 }
 
 // extract the stability index for a node from tcx, if possible
-crate fn get_stability(cx: &DocContext<'_>, def_id: DefId) -> Option<Stability> {
+crate fn get_stability(cx: &mut DocContext<'_>, def_id: DefId) -> Option<Stability> {
     cx.tcx.lookup_stability(def_id).cloned()
 }
 
-crate fn get_deprecation(cx: &DocContext<'_>, def_id: DefId) -> Option<Deprecation> {
+crate fn get_deprecation(cx: &mut DocContext<'_>, def_id: DefId) -> Option<Deprecation> {
     cx.tcx.lookup_deprecation(def_id).clean(cx)
 }
 
 fn external_generic_args(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     trait_did: Option<DefId>,
     has_self: bool,
     bindings: Vec<TypeBinding>,
@@ -161,7 +161,7 @@ fn external_generic_args(
 // trait_did should be set to a trait's DefId if called on a TraitRef, in order to sugar
 // from Fn<(A, B,), C> to Fn(A, B) -> C
 pub(super) fn external_path(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     name: Symbol,
     trait_did: Option<DefId>,
     has_self: bool,
@@ -186,7 +186,7 @@ pub(super) fn external_path(
 crate fn get_real_types(
     generics: &Generics,
     arg: &Type,
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     recurse: i32,
 ) -> FxHashSet<(Type, TypeKind)> {
     let arg_s = arg.print().to_string();
@@ -264,7 +264,7 @@ crate fn get_real_types(
 crate fn get_all_types(
     generics: &Generics,
     decl: &FnDecl,
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
 ) -> (Vec<(Type, TypeKind)>, Vec<(Type, TypeKind)>) {
     let mut all_types = FxHashSet::default();
     for arg in decl.inputs.values.iter() {
@@ -351,7 +351,7 @@ crate fn qpath_to_string(p: &hir::QPath<'_>) -> String {
     s
 }
 
-crate fn build_deref_target_impls(cx: &DocContext<'_>, items: &[Item], ret: &mut Vec<Item>) {
+crate fn build_deref_target_impls(cx: &mut DocContext<'_>, items: &[Item], ret: &mut Vec<Item>) {
     let tcx = cx.tcx;
 
     for item in items {
@@ -379,11 +379,11 @@ crate fn build_deref_target_impls(cx: &DocContext<'_>, items: &[Item], ret: &mut
 }
 
 crate trait ToSource {
-    fn to_src(&self, cx: &DocContext<'_>) -> String;
+    fn to_src(&self, cx: &mut DocContext<'_>) -> String;
 }
 
 impl ToSource for rustc_span::Span {
-    fn to_src(&self, cx: &DocContext<'_>) -> String {
+    fn to_src(&self, cx: &mut DocContext<'_>) -> String {
         debug!("converting span {:?} to snippet", self.clean(cx));
         let sn = match cx.sess().source_map().span_to_snippet(*self) {
             Ok(x) => x,
@@ -440,7 +440,7 @@ crate fn name_from_pat(p: &hir::Pat<'_>) -> String {
     }
 }
 
-crate fn print_const(cx: &DocContext<'_>, n: &'tcx ty::Const<'_>) -> String {
+crate fn print_const(cx: &mut DocContext<'_>, n: &'tcx ty::Const<'_>) -> String {
     match n.val {
         ty::ConstKind::Unevaluated(def, _, promoted) => {
             let mut s = if let Some(def) = def.as_local() {
@@ -470,7 +470,7 @@ crate fn print_const(cx: &DocContext<'_>, n: &'tcx ty::Const<'_>) -> String {
     }
 }
 
-crate fn print_evaluated_const(cx: &DocContext<'_>, def_id: DefId) -> Option<String> {
+crate fn print_evaluated_const(cx: &mut DocContext<'_>, def_id: DefId) -> Option<String> {
     cx.tcx.const_eval_poly(def_id).ok().and_then(|val| {
         let ty = cx.tcx.type_of(def_id);
         match (val, ty.kind()) {
@@ -495,7 +495,7 @@ fn format_integer_with_underscore_sep(num: &str) -> String {
         .collect()
 }
 
-fn print_const_with_custom_print_scalar(cx: &DocContext<'_>, ct: &'tcx ty::Const<'tcx>) -> String {
+fn print_const_with_custom_print_scalar(cx: &mut DocContext<'_>, ct: &'tcx ty::Const<'tcx>) -> String {
     // Use a slightly different format for integer types which always shows the actual value.
     // For all other types, fallback to the original `pretty_print_const`.
     match (ct.val, ct.ty.kind()) {
@@ -518,7 +518,7 @@ fn print_const_with_custom_print_scalar(cx: &DocContext<'_>, ct: &'tcx ty::Const
     }
 }
 
-crate fn is_literal_expr(cx: &DocContext<'_>, hir_id: hir::HirId) -> bool {
+crate fn is_literal_expr(cx: &mut DocContext<'_>, hir_id: hir::HirId) -> bool {
     if let hir::Node::Expr(expr) = cx.tcx.hir().get(hir_id) {
         if let hir::ExprKind::Lit(_) = &expr.kind {
             return true;
@@ -534,7 +534,7 @@ crate fn is_literal_expr(cx: &DocContext<'_>, hir_id: hir::HirId) -> bool {
     false
 }
 
-crate fn print_const_expr(cx: &DocContext<'_>, body: hir::BodyId) -> String {
+crate fn print_const_expr(cx: &mut DocContext<'_>, body: hir::BodyId) -> String {
     let value = &cx.tcx.hir().body(body).value;
 
     let snippet = if !value.span.from_expansion() {
@@ -547,7 +547,7 @@ crate fn print_const_expr(cx: &DocContext<'_>, body: hir::BodyId) -> String {
 }
 
 /// Given a type Path, resolve it to a Type using the TyCtxt
-crate fn resolve_type(cx: &DocContext<'_>, path: Path, id: hir::HirId) -> Type {
+crate fn resolve_type(cx: &mut DocContext<'_>, path: Path, id: hir::HirId) -> Type {
     debug!("resolve_type({:?},{:?})", path, id);
 
     let is_generic = match path.res {
@@ -561,12 +561,12 @@ crate fn resolve_type(cx: &DocContext<'_>, path: Path, id: hir::HirId) -> Type {
         Res::SelfTy(..) | Res::Def(DefKind::TyParam | DefKind::AssocTy, _) => true,
         _ => false,
     };
-    let did = register_res(&*cx, path.res);
+    let did = register_res(cx, path.res);
     ResolvedPath { path, param_names: None, did, is_generic }
 }
 
 crate fn get_auto_trait_and_blanket_impls(
-    cx: &DocContext<'tcx>,
+    cx: &mut DocContext<'tcx>,
     ty: Ty<'tcx>,
     param_env_def_id: DefId,
 ) -> impl Iterator<Item = Item> {
@@ -576,7 +576,7 @@ crate fn get_auto_trait_and_blanket_impls(
         .chain(BlanketImplFinder::new(cx).get_blanket_impls(ty, param_env_def_id))
 }
 
-crate fn register_res(cx: &DocContext<'_>, res: Res) -> DefId {
+crate fn register_res(cx: &mut DocContext<'_>, res: Res) -> DefId {
     debug!("register_res({:?})", res);
 
     let (did, kind) = match res {
@@ -616,14 +616,14 @@ crate fn register_res(cx: &DocContext<'_>, res: Res) -> DefId {
     did
 }
 
-crate fn resolve_use_source(cx: &DocContext<'_>, path: Path) -> ImportSource {
+crate fn resolve_use_source(cx: &mut DocContext<'_>, path: Path) -> ImportSource {
     ImportSource {
         did: if path.res.opt_def_id().is_none() { None } else { Some(register_res(cx, path.res)) },
         path,
     }
 }
 
-crate fn enter_impl_trait<F, R>(cx: &DocContext<'_>, f: F) -> R
+crate fn enter_impl_trait<F, R>(cx: &mut DocContext<'_>, f: F) -> R
 where
     F: FnOnce() -> R,
 {

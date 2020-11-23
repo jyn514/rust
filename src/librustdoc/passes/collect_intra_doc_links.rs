@@ -45,7 +45,7 @@ crate const COLLECT_INTRA_DOC_LINKS: Pass = Pass {
     description: "reads a crate's documentation to resolve intra-doc-links",
 };
 
-crate fn collect_intra_doc_links(krate: Crate, cx: &DocContext<'_>) -> Crate {
+crate fn collect_intra_doc_links(krate: Crate, cx: &mut DocContext<'_>) -> Crate {
     LinkCollector::new(cx).fold_crate(krate)
 }
 
@@ -169,7 +169,7 @@ enum AnchorFailure {
 }
 
 struct LinkCollector<'a, 'tcx> {
-    cx: &'a DocContext<'tcx>,
+    cx: &'a mut DocContext<'tcx>,
     /// A stack of modules used to decide what scope to resolve in.
     ///
     /// The last module will be used if the parent scope of the current item is
@@ -182,7 +182,7 @@ struct LinkCollector<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
-    fn new(cx: &'a DocContext<'tcx>) -> Self {
+    fn new(cx: &'a mut DocContext<'tcx>) -> Self {
         LinkCollector { cx, mod_ids: Vec::new(), kind_side_channel: Cell::new(None) }
     }
 
@@ -524,7 +524,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     // something like [`ambi_fn`](<SomeStruct as SomeTrait>::ambi_fn)
                     .or_else(|| {
                         let kind =
-                            resolve_associated_trait_item(did, module_id, item_name, ns, &self.cx);
+                            resolve_associated_trait_item(did, module_id, item_name, ns, self.cx);
                         debug!("got associated item kind {:?}", kind);
                         kind
                     });
@@ -671,7 +671,7 @@ fn resolve_associated_trait_item(
     module: DefId,
     item_name: Symbol,
     ns: Namespace,
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
 ) -> Option<(ty::AssocKind, DefId)> {
     let ty = cx.tcx.type_of(did);
     // First consider blanket impls: `impl From<T> for T`
@@ -751,7 +751,7 @@ fn resolve_associated_trait_item(
 ///
 /// NOTE: this cannot be a query because more traits could be available when more crates are compiled!
 /// So it is not stable to serialize cross-crate.
-fn traits_implemented_by(cx: &DocContext<'_>, type_: DefId, module: DefId) -> FxHashSet<DefId> {
+fn traits_implemented_by(cx: &mut DocContext<'_>, type_: DefId, module: DefId) -> FxHashSet<DefId> {
     let mut cache = cx.module_trait_cache.borrow_mut();
     let in_scope_traits = cache.entry(module).or_insert_with(|| {
         cx.enter_resolver(|resolver| {
@@ -1601,7 +1601,7 @@ impl Suggestion {
 /// parameter of the callback will contain it, and the primary span of the diagnostic will be set
 /// to it.
 fn report_diagnostic(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     lint: &'static Lint,
     msg: &str,
     item: &Item,
@@ -1898,7 +1898,7 @@ fn resolution_failure(
 
 /// Report an anchor failure.
 fn anchor_failure(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     item: &Item,
     path_str: &str,
     dox: &str,
@@ -1923,7 +1923,7 @@ fn anchor_failure(
 
 /// Report an ambiguity error, where there were multiple possible resolutions.
 fn ambiguity_error(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     item: &Item,
     path_str: &str,
     dox: &str,
@@ -1997,7 +1997,7 @@ fn suggest_disambiguator(
 
 /// Report a link from a public item to a private one.
 fn privacy_error(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     item: &Item,
     path_str: &str,
     dox: &str,
@@ -2023,7 +2023,7 @@ fn privacy_error(
 
 /// Given an enum variant's res, return the res of its enum and the associated fragment.
 fn handle_variant(
-    cx: &DocContext<'_>,
+    cx: &mut DocContext<'_>,
     res: Res,
     extra_fragment: &Option<String>,
 ) -> Result<(Res, Option<String>), ErrorKind<'static>> {

@@ -13,7 +13,7 @@ crate const COLLECT_TRAIT_IMPLS: Pass = Pass {
     description: "retrieves trait impls for items in the crate",
 };
 
-crate fn collect_trait_impls(krate: Crate, cx: &DocContext<'_>) -> Crate {
+crate fn collect_trait_impls(krate: Crate, cx: &mut DocContext<'_>) -> Crate {
     let mut synth = SyntheticImplCollector::new(cx);
     let mut krate = synth.fold_crate(krate);
 
@@ -110,12 +110,12 @@ crate fn collect_trait_impls(krate: Crate, cx: &DocContext<'_>) -> Crate {
 }
 
 struct SyntheticImplCollector<'a, 'tcx> {
-    cx: &'a DocContext<'tcx>,
+    cx: &'a mut DocContext<'tcx>,
     impls: Vec<Item>,
 }
 
 impl<'a, 'tcx> SyntheticImplCollector<'a, 'tcx> {
-    fn new(cx: &'a DocContext<'tcx>) -> Self {
+    fn new(cx: &'a mut DocContext<'tcx>) -> Self {
         SyntheticImplCollector { cx, impls: Vec::new() }
     }
 }

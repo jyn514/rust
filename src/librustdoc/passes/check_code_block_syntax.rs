@@ -17,12 +17,12 @@ crate const CHECK_CODE_BLOCK_SYNTAX: Pass = Pass {
     description: "validates syntax inside Rust code blocks",
 };
 
-crate fn check_code_block_syntax(krate: clean::Crate, cx: &DocContext<'_>) -> clean::Crate {
+crate fn check_code_block_syntax(krate: clean::Crate, cx: &mut DocContext<'_>) -> clean::Crate {
     SyntaxChecker { cx }.fold_crate(krate)
 }
 
 struct SyntaxChecker<'a, 'tcx> {
-    cx: &'a DocContext<'tcx>,
+    cx: &'a mut DocContext<'tcx>,
 }
 
 impl<'a, 'tcx> SyntaxChecker<'a, 'tcx> {

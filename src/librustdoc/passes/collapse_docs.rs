@@ -12,7 +12,7 @@ crate const COLLAPSE_DOCS: Pass = Pass {
     description: "concatenates all document attributes into one document attribute",
 };
 
-crate fn collapse_docs(krate: clean::Crate, _: &DocContext<'_>) -> clean::Crate {
+crate fn collapse_docs(krate: clean::Crate, _: &mut DocContext<'_>) -> clean::Crate {
     let mut krate = Collapser.fold_crate(krate);
     krate.collapsed = true;
     krate

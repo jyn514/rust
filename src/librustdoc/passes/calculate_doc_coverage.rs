@@ -20,7 +20,7 @@ crate const CALCULATE_DOC_COVERAGE: Pass = Pass {
     description: "counts the number of items with and without documentation",
 };
 
-fn calculate_doc_coverage(krate: clean::Crate, ctx: &DocContext<'_>) -> clean::Crate {
+fn calculate_doc_coverage(krate: clean::Crate, ctx: &mut DocContext<'_>) -> clean::Crate {
     let mut calc = CoverageCalculator::new(ctx);
     let krate = calc.fold_crate(krate);
 
@@ -101,7 +101,7 @@ impl ops::AddAssign for ItemCount {
 
 struct CoverageCalculator<'a, 'b> {
     items: BTreeMap<FileName, ItemCount>,
-    ctx: &'a DocContext<'b>,
+    ctx: &'a mut DocContext<'b>,
 }
 
 fn limit_filename_len(filename: String) -> String {
@@ -115,7 +115,7 @@ fn limit_filename_len(filename: String) -> String {
 }
 
 impl<'a, 'b> CoverageCalculator<'a, 'b> {
-    fn new(ctx: &'a DocContext<'b>) -> CoverageCalculator<'a, 'b> {
+    fn new(ctx: &'a mut DocContext<'b>) -> CoverageCalculator<'a, 'b> {
         CoverageCalculator { items: Default::default(), ctx }
     }
 

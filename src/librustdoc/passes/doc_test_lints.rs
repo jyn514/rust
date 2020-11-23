@@ -19,16 +19,16 @@ crate const CHECK_PRIVATE_ITEMS_DOC_TESTS: Pass = Pass {
 };
 
 struct PrivateItemDocTestLinter<'a, 'tcx> {
-    cx: &'a DocContext<'tcx>,
+    cx: &'a mut DocContext<'tcx>,
 }
 
 impl<'a, 'tcx> PrivateItemDocTestLinter<'a, 'tcx> {
-    fn new(cx: &'a DocContext<'tcx>) -> Self {
+    fn new(cx: &'a mut DocContext<'tcx>) -> Self {
         PrivateItemDocTestLinter { cx }
     }
 }
 
-crate fn check_private_items_doc_tests(krate: Crate, cx: &DocContext<'_>) -> Crate {
+crate fn check_private_items_doc_tests(krate: Crate, cx: &mut DocContext<'_>) -> Crate {
     let mut coll = PrivateItemDocTestLinter::new(cx);
 
     coll.fold_crate(krate)
@@ -39,7 +39,7 @@ impl<'a, 'tcx> DocFolder for PrivateItemDocTestLinter<'a, 'tcx> {
         let cx = self.cx;
         let dox = item.attrs.collapsed_doc_value().unwrap_or_else(String::new);
 
-        look_for_tests(&cx, &dox, &item);
+        look_for_tests(cx, &dox, &item);
 
         self.fold_item_recur(item)
     }
@@ -57,7 +57,7 @@ impl crate::doctest::Tester for Tests {
     }
 }
 
-crate fn should_have_doc_example(cx: &DocContext<'_>, item: &clean::Item) -> bool {
+crate fn should_have_doc_example(cx: &mut DocContext<'_>, item: &clean::Item) -> bool {
     if matches!(item.kind,
         clean::StructFieldItem(_)
         | clean::VariantItem(_)
@@ -79,7 +79,7 @@ crate fn should_have_doc_example(cx: &DocContext<'_>, item: &clean::Item) -> boo
     level != lint::Level::Allow || matches!(source, LintSource::Default)
 }
 
-crate fn look_for_tests<'tcx>(cx: &DocContext<'tcx>, dox: &str, item: &Item) {
+crate fn look_for_tests<'tcx>(cx: &mut DocContext<'tcx>, dox: &str, item: &Item) {
     let hir_id = match cx.as_local_hir_id(item.def_id) {
         Some(hir_id) => hir_id,
         None => {

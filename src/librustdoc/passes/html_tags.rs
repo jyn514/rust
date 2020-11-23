@@ -16,16 +16,16 @@ crate const CHECK_INVALID_HTML_TAGS: Pass = Pass {
 };
 
 struct InvalidHtmlTagsLinter<'a, 'tcx> {
-    cx: &'a DocContext<'tcx>,
+    cx: &'a mut DocContext<'tcx>,
 }
 
 impl<'a, 'tcx> InvalidHtmlTagsLinter<'a, 'tcx> {
-    fn new(cx: &'a DocContext<'tcx>) -> Self {
+    fn new(cx: &'a mut DocContext<'tcx>) -> Self {
         InvalidHtmlTagsLinter { cx }
     }
 }
 
-crate fn check_invalid_html_tags(krate: Crate, cx: &DocContext<'_>) -> Crate {
+crate fn check_invalid_html_tags(krate: Crate, cx: &mut DocContext<'_>) -> Crate {
     if !cx.tcx.sess.is_nightly_build() {
         krate
     } else {
@@ -183,7 +183,7 @@ impl<'a, 'tcx> DocFolder for InvalidHtmlTagsLinter<'a, 'tcx> {
         };
         let dox = item.attrs.collapsed_doc_value().unwrap_or_default();
         if !dox.is_empty() {
-            let cx = &self.cx;
+            let cx = self.cx;
             let report_diag = |msg: &str, range: &Range<usize>| {
                 let sp = match super::source_span_for_markdown_range(cx, &dox, range, &item.attrs) {
                     Some(sp) => sp,

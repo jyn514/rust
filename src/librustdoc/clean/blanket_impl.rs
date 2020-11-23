@@ -10,11 +10,11 @@ use rustc_span::DUMMY_SP;
 use super::*;
 
 crate struct BlanketImplFinder<'a, 'tcx> {
-    crate cx: &'a core::DocContext<'tcx>,
+    crate cx: &'a mut core::DocContext<'tcx>,
 }
 
 impl<'a, 'tcx> BlanketImplFinder<'a, 'tcx> {
-    crate fn new(cx: &'a core::DocContext<'tcx>) -> Self {
+    crate fn new(cx: &'a mut core::DocContext<'tcx>) -> Self {
         BlanketImplFinder { cx }
     }
 

@@ -21,12 +21,12 @@ struct RegionDeps<'tcx> {
 }
 
 crate struct AutoTraitFinder<'a, 'tcx> {
-    crate cx: &'a core::DocContext<'tcx>,
+    crate cx: &'a mut core::DocContext<'tcx>,
     crate f: auto_trait::AutoTraitFinder<'tcx>,
 }
 
 impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
-    crate fn new(cx: &'a core::DocContext<'tcx>) -> Self {
+    crate fn new(cx: &'a mut core::DocContext<'tcx>) -> Self {
         let f = auto_trait::AutoTraitFinder::new(cx.tcx);
 
         AutoTraitFinder { cx, f }
