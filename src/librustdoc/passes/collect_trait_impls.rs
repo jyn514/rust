@@ -87,10 +87,10 @@ crate fn collect_trait_impls(krate: Crate, cx: &DocContext<'_>) -> Crate {
 
     // `tcx.crates()` doesn't include the local crate, and `tcx.all_trait_implementations`
     // doesn't work with it anyway, so pull them from the HIR map instead
-    for &trait_did in cx.tcx.all_traits(LOCAL_CRATE).iter() {
-        for &impl_node in cx.tcx.hir().trait_impls(trait_did) {
-            let impl_did = cx.tcx.hir().local_def_id(impl_node);
-            cx.tcx.sess.time("build_local_trait_impl", || {
+    cx.tcx.sess.time("build_local_trait_impls", || {
+        for &trait_did in cx.tcx.all_traits(LOCAL_CRATE).iter() {
+            for &impl_node in cx.tcx.hir().trait_impls(trait_did) {
+                let impl_did = cx.tcx.hir().local_def_id(impl_node);
                 let mut extra_attrs = Vec::new();
                 let mut parent = cx.tcx.parent(impl_did.to_def_id());
                 while let Some(did) = parent {
@@ -117,9 +117,9 @@ crate fn collect_trait_impls(krate: Crate, cx: &DocContext<'_>) -> Crate {
                     Some(&extra_attrs),
                     &mut new_items,
                 );
-            });
+            }
         }
-    }
+    });
 
     if let Some(ref mut it) = krate.module {
         if let ModuleItem(Module { ref mut items, .. }) = it.kind {
