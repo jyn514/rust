@@ -5,7 +5,7 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    braced, parenthesized, parse_macro_input, AttrStyle, Attribute, Block, Error, Expr, Ident,
+    braced, parenthesized, parse_quote, parse_macro_input, AttrStyle, Attribute, Block, Error, Expr, Ident,
     ReturnType, Token, Type,
 };
 
@@ -271,6 +271,14 @@ fn process_modifiers(query: &mut Query) -> QueryModifiers {
             QueryModifier::Desc(tcx, list) => {
                 if desc.is_some() {
                     panic!("duplicate modifier `desc` for query `{}`", query.name);
+                }
+                if query.doc_comments.is_empty() {
+                    // FIXME: replace `{}` with `_` somehow
+                    let format_str = list.first().unwrap();
+                    let comment = parse_quote! {
+                        #[doc = #format_str]
+                    };
+                    query.doc_comments.push(comment);
                 }
                 desc = Some((tcx, list));
             }
