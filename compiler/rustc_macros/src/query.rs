@@ -273,10 +273,17 @@ fn process_modifiers(query: &mut Query) -> QueryModifiers {
                     panic!("duplicate modifier `desc` for query `{}`", query.name);
                 }
                 if query.doc_comments.is_empty() {
+                    use runtime_fmt::{FormatBuf, Param};
                     // FIXME: replace `{}` with `_` somehow
-                    let format_str = list.first().unwrap();
+                    let mut comment = list.first().unwrap();
+                    if let Expr::Lit(Lit { lit: Lit::Str(format_str), .. }) = comment {
+                        let args = list.iter().skip(1).map(|expr| {
+                            Param::normal(expr.to_tokens().to_string());
+                        });
+                        comment = runtime_fmt::FormatBuf::new(format_str, &args.collect()).format();
+                    }
                     let comment = parse_quote! {
-                        #[doc = #format_str]
+                        #[doc = #comment]
                     };
                     query.doc_comments.push(comment);
                 }

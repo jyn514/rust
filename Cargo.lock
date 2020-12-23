@@ -3019,6 +3019,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "runtime-fmt"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "703425f78450961e590726ac24d823e6dc2340dc18282cf0cb6a417b26ca2ce8"
+dependencies = [
+ "unicode-xid",
+]
+
+[[package]]
 name = "rust-argon2"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3911,6 +3920,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "runtime-fmt",
  "syn",
  "synstructure",
 ]
