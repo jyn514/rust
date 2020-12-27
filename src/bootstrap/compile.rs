@@ -27,6 +27,7 @@ use crate::config::TargetSelection;
 use crate::dist;
 use crate::native;
 use crate::tool::SourceType;
+use crate::use_cached_rustc;
 use crate::util::{exe, is_dylib, symlink_dir};
 use crate::{Compiler, DependencyType, GitRepo, Mode};
 
@@ -65,6 +66,11 @@ impl Step for Std {
         {
             builder.info("Warning: Using a potentially old libstd. This may not behave well.");
             builder.ensure(StdLink { compiler, target_compiler: compiler, target });
+            return;
+        }
+
+        // If this is stage 0 or 1 and we're using a cached rustc, copy the stage 0 standard library instead of rebuilding.
+        if std::env::var("BOOTSTRAP_CACHE_STAGE1").is_ok() && compiler.stage < 2 {
             return;
         }
 
@@ -498,8 +504,12 @@ impl Step for Rustc {
             return;
         }
 
+        // No need to build from source if we've already downloaded rustc for this platform.
+        // This just copies the files from stage0 to stage1.
         let compiler_to_use = builder.compiler_for(compiler.stage, compiler.host, target);
-        if compiler_to_use != compiler {
+        if use_cached_rustc(&compiler) {
+            return;
+        } else if compiler_to_use != compiler {
             builder.ensure(Rustc { compiler: compiler_to_use, target });
             builder
                 .info(&format!("Uplifting stage1 rustc ({} -> {})", builder.config.build, target));
@@ -894,11 +904,20 @@ impl Step for Sysroot {
     /// 1-3.
     fn run(self, builder: &Builder<'_>) -> Interned<PathBuf> {
         let compiler = self.compiler;
-        let sysroot = if compiler.stage == 0 {
+
+        // stage0-sysroot stores master libstd for the beta compiler.
+        // When not using the beta compiler, there's no need to override the sysroot.
+        let sysroot = if compiler.stage == 0 && !use_cached_rustc(&compiler) {
             builder.out.join(&compiler.host.triple).join("stage0-sysroot")
         } else {
             builder.out.join(&compiler.host.triple).join(format!("stage{}", compiler.stage))
         };
+
+        // The sysroot is copied to stage1/ in Assemble, not here.
+        if use_cached_rustc(&compiler) {
+            return INTERNER.intern_path(sysroot);
+        }
+
         let _ = fs::remove_dir_all(&sysroot);
         t!(fs::create_dir_all(&sysroot));
 
@@ -1063,12 +1082,18 @@ impl Step for Assemble {
         dist::maybe_install_llvm_target(builder, target_compiler.host, &sysroot);
 
         // Link the compiler binary itself into place
-        let out_dir = builder.cargo_out(build_compiler, Mode::Rustc, host);
-        let rustc = out_dir.join(exe("rustc-main", host));
         let bindir = sysroot.join("bin");
         t!(fs::create_dir_all(&bindir));
         let compiler = builder.rustc(target_compiler);
-        builder.copy(&rustc, &compiler);
+
+        if use_cached_rustc(&build_compiler) {
+            let stage0 = builder.out.join(&*build_compiler.host.triple).join("stage0");
+            builder.cp_r(&stage0, &builder.sysroot(target_compiler));
+        } else {
+            let out_dir = builder.cargo_out(build_compiler, Mode::Rustc, host);
+            let rustc = out_dir.join(exe("rustc-main", host));
+            builder.copy(&rustc, &compiler);
+        };
 
         target_compiler
     }

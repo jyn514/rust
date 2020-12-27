@@ -377,6 +377,7 @@ class RustBuild(object):
         self.verbose = False
         self.git_version = None
         self.nix_deps_dir = None
+        self.stage1_commit = None
 
     def download_stage0(self):
         """Fetch the build system for Rust, written in Rust
@@ -393,7 +394,7 @@ class RustBuild(object):
 
         if self.rustc().startswith(self.bin_root()) and \
                 (not os.path.exists(self.rustc()) or
-                 self.program_out_of_date(self.rustc_stamp(), self.date)):
+                 self.program_out_of_date(self.rustc_stamp(), self.date + str(self.stage1_commit))):
             if os.path.exists(self.bin_root()):
                 shutil.rmtree(self.bin_root())
             tarball_suffix = '.tar.xz' if support_xz() else '.tar.gz'
@@ -407,6 +408,10 @@ class RustBuild(object):
             filename = "cargo-{}-{}{}".format(rustc_channel, self.build,
                                               tarball_suffix)
             self._download_stage0_helper(filename, "cargo", tarball_suffix)
+            if self.stage1_commit is not None:
+                filename = "rustc-dev-{}-{}{}".format(rustc_channel, self.build, tarball_suffix)
+                self._download_stage0_helper(filename, "rustc-dev", tarball_suffix)
+
             self.fix_bin_or_dylib("{}/bin/rustc".format(self.bin_root()))
             self.fix_bin_or_dylib("{}/bin/rustdoc".format(self.bin_root()))
             self.fix_bin_or_dylib("{}/bin/cargo".format(self.bin_root()))
@@ -415,7 +420,7 @@ class RustBuild(object):
                 if lib.endswith(".so"):
                     self.fix_bin_or_dylib("{}/{}".format(lib_dir, lib))
             with output(self.rustc_stamp()) as rust_stamp:
-                rust_stamp.write(self.date)
+                rust_stamp.write(self.date + str(self.stage1_commit))
 
         if self.rustfmt() and self.rustfmt().startswith(self.bin_root()) and (
             not os.path.exists(self.rustfmt())
@@ -465,16 +470,20 @@ class RustBuild(object):
 
     def _download_stage0_helper(self, filename, pattern, tarball_suffix, date=None):
         if date is None:
-            date = self.date
+            date = self.stage1_commit or self.date
         cache_dst = os.path.join(self.build_dir, "cache")
         rustc_cache = os.path.join(cache_dst, date)
         if not os.path.exists(rustc_cache):
             os.makedirs(rustc_cache)
 
-        url = "{}/dist/{}".format(self._download_url, date)
+        if self.stage1_commit is not None:
+            url = "https://ci-artifacts.rust-lang.org/rustc-builds/{}".format(self.stage1_commit)
+        else:
+            url = "{}/dist/{}".format(self._download_url, date)
         tarball = os.path.join(rustc_cache, filename)
         if not os.path.exists(tarball):
-            get("{}/{}".format(url, filename), tarball, verbose=self.verbose)
+            do_verify = self.stage1_commit is None
+            get("{}/{}".format(url, filename), tarball, verbose=self.verbose, do_verify=do_verify)
         unpack(tarball, tarball_suffix, self.bin_root(), match=pattern, verbose=self.verbose)
 
     def _download_ci_llvm(self, llvm_sha, llvm_assertions):
@@ -591,6 +600,61 @@ class RustBuild(object):
         except subprocess.CalledProcessError as reason:
             print("warning: failed to call patchelf:", reason)
             return
+
+    # Return the stage1 compiler to download, if any.
+    def maybe_download_stage1(self):
+        # If `download-stage1` is not set, default to rebuilding.
+        if self.get_toml("download-stage1", section="rust") != "true":
+            return None
+        # Look for a version to compare to based on the current commit.
+        # There are a few different cases to handle.
+        # 1. This commit is a fast-forward from master: `master - * - * - HEAD`
+        # 2. This commit and master have diverged:
+        # ```
+        #   Y - * - HEAD
+        #  /
+        # X - * - master
+        # ```
+        # In this case, we should compare to `X`.
+        # 3. `master` and `HEAD` are radically different (>100 commits, or similar). This probably
+        # means that `master` does *not* correspond to the version we want to compare to, e.g. a
+        # fork. Instead, we want to compare to `rust-lang/rust:master`, which this has to share a
+        # recent merge base with.
+
+        # Find which remote corresponds to `rust-lang/rust`.
+        remotes = subprocess.check_output(["git", "remote", "-v"], universal_newlines=True)
+        # e.g. `origin https://github.com//rust-lang/rust (fetch)`
+        rust_lang_remote = next(line for line in remotes.splitlines() if "rust-lang/rust" in line)
+        rust_lang_remote = rust_lang_remote.split()[0]
+
+        # Find which commit to compare to
+        merge_base = ["git", "merge-base", "HEAD", "{}/master".format(rust_lang_remote)]
+        commit = subprocess.check_output(merge_base, universal_newlines=True).strip()
+
+        # Next, check if there were changes to the compiler since the ancestor commit.
+        # If so, rebuild instead of using an outdated version of the code.
+        rev_parse = ["git", "rev-parse", "--show-toplevel"]
+        top_level = subprocess.check_output(rev_parse, universal_newlines=True).strip()
+        compiler = "{}/compiler/".format(top_level)
+        # This is slightly more coarse than it needs to be; it rebuild on *any* changes, not just
+        # changes to code.
+        status = subprocess.call(["git", "diff-index", "--quiet", commit, "--", compiler])
+        if status != 0:
+            if self.verbose:
+                print("changes to compiler/ detected, not downloading stage1")
+            return None
+        # Check for untracked files. Adding `build.rs` can change the build
+        # inputs even if no modified files were changed.
+        # Annoyingly, I can't find a way to check for untracked and modified files at the same
+        # time. Even more annoyingly, there doesn't seem to be a way to show *whether* there are
+        # untracked files without listing them.
+        ls_files = ["git", "ls-files", "-o", "--exclude-standard", "compiler/"]
+        untracked_files = subprocess.check_output(ls_files, universal_newlines=True)
+        if untracked_files != '':
+            if self.verbose:
+                print("untracked files in compiler/ detected, not downloading stage1")
+            return None
+        return commit
 
     def rustc_stamp(self):
         """Return the path for .rustc-stamp
@@ -1068,6 +1132,12 @@ def bootstrap(help_triggered):
 
     # Fetch/build the bootstrap
     build.build = args.build or build.build_triple()
+    build.stage1_commit = build.maybe_download_stage1()
+    if build.stage1_commit is not None:
+        if build.verbose:
+            commit = build.stage1_commit
+            print("using downloaded stage1 artifacts from CI (commit {})".format(commit))
+        build.rustc_channel = "nightly"
     build.download_stage0()
     sys.stdout.flush()
     build.ensure_vendored()
@@ -1084,6 +1154,8 @@ def bootstrap(help_triggered):
     env["RUSTC_BOOTSTRAP"] = '1'
     if toml_path:
         env["BOOTSTRAP_CONFIG"] = toml_path
+    if build.stage1_commit is not None:
+        env["BOOTSTRAP_CACHE_STAGE1"] = "1"
     run(args, env=env, verbose=build.verbose)
 
 

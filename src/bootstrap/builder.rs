@@ -629,8 +629,10 @@ impl<'a> Builder<'a> {
                     .join("rustlib")
                     .join(self.target.triple)
                     .join("lib");
-                let _ = fs::remove_dir_all(&sysroot);
-                t!(fs::create_dir_all(&sysroot));
+                if !crate::use_cached_rustc(&self.compiler) {
+                    let _ = fs::remove_dir_all(&sysroot);
+                    t!(fs::create_dir_all(&sysroot));
+                }
                 INTERNER.intern_path(sysroot)
             }
         }

@@ -502,6 +502,7 @@ struct Rust {
     new_symbol_mangling: Option<bool>,
     profile_generate: Option<String>,
     profile_use: Option<String>,
+    download_stage1: Option<bool>,
 }
 
 /// TOML representation of how each build target is configured.
