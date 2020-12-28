@@ -493,6 +493,16 @@ impl Step for Rustdoc {
         // rustc compiler it's paired with, so it must be built with the previous stage compiler.
         let build_compiler = builder.compiler(target_compiler.stage - 1, builder.config.build);
 
+        // Rustdoc uses its own version of `tracing` when downloading CI
+        // artifacts so that debug logging is available.
+        let using_ci_artifacts;
+        let extra_features: &[_] = if builder.build.config.download_stage1 {
+            using_ci_artifacts = ["using-ci-artifacts".into()];
+            &using_ci_artifacts
+        } else {
+            &[]
+        };
+
         // The presence of `target_compiler` ensures that the necessary libraries (codegen backends,
         // compiler libraries, ...) are built. Rustdoc does not require the presence of any
         // libraries within sysroot_libdir (i.e., rustlib), though doctests may want it (since
@@ -508,7 +518,7 @@ impl Step for Rustdoc {
             "build",
             "src/tools/rustdoc",
             SourceType::InTree,
-            &[],
+            extra_features,
         );
 
         builder.info(&format!(

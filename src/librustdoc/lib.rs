@@ -95,12 +95,88 @@ mod visit_lib;
 pub fn main() {
     rustc_driver::set_sigpipe_handler();
     rustc_driver::install_ice_hook();
+
+    // When using CI artifacts (with `download_stage1 = true`),
+    // tracing is built with `--features=static_max_level_info`, which disables
+    // almost all rustdoc logging. To avoid this, compile our own version of
+    // `tracing` that logs all levels.
+    #[cfg(feature = "using-ci-artifacts")]
+    init_logging();
+    // When using CI artifacts, rustc logging is always disabled. To avoid spurious
+    // warnings, don't enable both rustdoc and rustc's version of `tracing`.
+    #[cfg(not(feature = "using-ci-artifacts"))]
     rustc_driver::init_env_logger("RUSTDOC_LOG");
+
     let exit_code = rustc_driver::catch_with_exit_code(|| match get_args() {
         Some(args) => main_args(&args),
         _ => Err(ErrorReported),
     });
     process::exit(exit_code);
+}
+
+#[cfg(feature = "using-ci-artifacts")]
+fn init_logging() {
+    extern crate libc;
+    #[cfg(windows)]
+    extern crate winapi;
+
+    use std::io;
+
+    // FIXME remove these and use winapi 0.3 instead
+    // Duplicates: bootstrap/compile.rs, librustc_errors/emitter.rs, rustc_driver/lib.rs
+    #[cfg(unix)]
+    fn stdout_isatty() -> bool {
+        unsafe { libc::isatty(libc::STDOUT_FILENO) != 0 }
+    }
+
+    #[cfg(windows)]
+    fn stdout_isatty() -> bool {
+        use winapi::um::consoleapi::GetConsoleMode;
+        use winapi::um::processenv::GetStdHandle;
+        use winapi::um::winbase::STD_OUTPUT_HANDLE;
+
+        unsafe {
+            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            let mut out = 0;
+            GetConsoleMode(handle, &mut out) != 0
+        }
+    }
+
+    let color_logs = match std::env::var("RUSTDOC_LOG_COLOR") {
+        Ok(value) => match value.as_ref() {
+            "always" => true,
+            "never" => false,
+            "auto" => stdout_isatty(),
+            _ => early_error(
+                ErrorOutputType::default(),
+                &format!(
+                    "invalid log color value '{}': expected one of always, never, or auto",
+                    value
+                ),
+            ),
+        },
+        Err(std::env::VarError::NotPresent) => stdout_isatty(),
+        Err(std::env::VarError::NotUnicode(_value)) => early_error(
+            ErrorOutputType::default(),
+            "non-Unicode log color value: expected one of always, never, or auto",
+        ),
+    };
+    let filter = tracing_subscriber::EnvFilter::from_env("RUSTDOC_LOG");
+    let layer = tracing_tree::HierarchicalLayer::default()
+        .with_writer(io::stderr)
+        .with_indent_lines(true)
+        .with_ansi(color_logs)
+        .with_targets(true)
+        .with_wraparound(10)
+        .with_verbose_exit(true)
+        .with_verbose_entry(true)
+        .with_indent_amount(2);
+    #[cfg(parallel_compiler)]
+    let layer = layer.with_thread_ids(true).with_thread_names(true);
+
+    use tracing_subscriber::layer::SubscriberExt;
+    let subscriber = tracing_subscriber::Registry::default().with(filter).with(layer);
+    tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
 fn get_args() -> Option<Vec<String>> {
