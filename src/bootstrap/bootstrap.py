@@ -397,20 +397,21 @@ class RustBuild(object):
                  self.program_out_of_date(self.rustc_stamp(), self.date + str(self.stage1_commit))):
             if os.path.exists(self.bin_root()):
                 shutil.rmtree(self.bin_root())
+            download_stage1 = self.stage1_commit is not None
             tarball_suffix = '.tar.xz' if support_xz() else '.tar.gz'
             filename = "rust-std-{}-{}{}".format(
                 rustc_channel, self.build, tarball_suffix)
             pattern = "rust-std-{}".format(self.build)
-            self._download_stage0_helper(filename, pattern, tarball_suffix)
+            self._download_stage0_helper(filename, pattern, tarball_suffix, download_stage1)
             filename = "rustc-{}-{}{}".format(rustc_channel, self.build,
                                               tarball_suffix)
-            self._download_stage0_helper(filename, "rustc", tarball_suffix)
+            self._download_stage0_helper(filename, "rustc", tarball_suffix, download_stage1)
             filename = "cargo-{}-{}{}".format(rustc_channel, self.build,
                                               tarball_suffix)
             self._download_stage0_helper(filename, "cargo", tarball_suffix)
             if self.stage1_commit is not None:
                 filename = "rustc-dev-{}-{}{}".format(rustc_channel, self.build, tarball_suffix)
-                self._download_stage0_helper(filename, "rustc-dev", tarball_suffix)
+                self._download_stage0_helper(filename, "rustc-dev", tarball_suffix, download_stage1)
 
             self.fix_bin_or_dylib("{}/bin/rustc".format(self.bin_root()))
             self.fix_bin_or_dylib("{}/bin/rustdoc".format(self.bin_root()))
@@ -430,7 +431,7 @@ class RustBuild(object):
                 tarball_suffix = '.tar.xz' if support_xz() else '.tar.gz'
                 [channel, date] = rustfmt_channel.split('-', 1)
                 filename = "rustfmt-{}-{}{}".format(channel, self.build, tarball_suffix)
-                self._download_stage0_helper(filename, "rustfmt-preview", tarball_suffix, date)
+                self._download_stage0_helper(filename, "rustfmt-preview", tarball_suffix, date=date)
                 self.fix_bin_or_dylib("{}/bin/rustfmt".format(self.bin_root()))
                 self.fix_bin_or_dylib("{}/bin/cargo-fmt".format(self.bin_root()))
                 with output(self.rustfmt_stamp()) as rustfmt_stamp:
@@ -468,21 +469,26 @@ class RustBuild(object):
         return opt == "true" \
             or (opt == "if-available" and self.build == "x86_64-unknown-linux-gnu")
 
-    def _download_stage0_helper(self, filename, pattern, tarball_suffix, date=None):
+    def _download_stage0_helper(
+        self, filename, pattern, tarball_suffix, download_stage1=False, date=None
+    ):
         if date is None:
-            date = self.stage1_commit or self.date
+            if download_stage1:
+                date = self.stage1_commit
+            else:
+                date = self.date
         cache_dst = os.path.join(self.build_dir, "cache")
         rustc_cache = os.path.join(cache_dst, date)
         if not os.path.exists(rustc_cache):
             os.makedirs(rustc_cache)
 
-        if self.stage1_commit is not None:
+        if download_stage1:
             url = "https://ci-artifacts.rust-lang.org/rustc-builds/{}".format(self.stage1_commit)
         else:
             url = "{}/dist/{}".format(self._download_url, date)
         tarball = os.path.join(rustc_cache, filename)
         if not os.path.exists(tarball):
-            do_verify = self.stage1_commit is None
+            do_verify = not download_stage1
             get("{}/{}".format(url, filename), tarball, verbose=self.verbose, do_verify=do_verify)
         unpack(tarball, tarball_suffix, self.bin_root(), match=pattern, verbose=self.verbose)
 
