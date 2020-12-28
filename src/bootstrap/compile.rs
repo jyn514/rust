@@ -27,7 +27,6 @@ use crate::config::TargetSelection;
 use crate::dist;
 use crate::native;
 use crate::tool::SourceType;
-use crate::use_cached_rustc;
 use crate::util::{exe, is_dylib, symlink_dir};
 use crate::{Compiler, DependencyType, GitRepo, Mode};
 
@@ -70,7 +69,7 @@ impl Step for Std {
         }
 
         // If this is stage 0 or 1 and we're using a cached rustc, copy the stage 0 standard library instead of rebuilding.
-        if std::env::var("BOOTSTRAP_CACHE_STAGE1").is_ok() && compiler.stage < 2 {
+        if builder.config.download_stage1 && compiler.stage < 2 {
             return;
         }
 
@@ -507,7 +506,7 @@ impl Step for Rustc {
         // No need to build from source if we've already downloaded rustc for this platform.
         // This just copies the files from stage0 to stage1.
         let compiler_to_use = builder.compiler_for(compiler.stage, compiler.host, target);
-        if use_cached_rustc(&compiler) {
+        if builder.use_cached_rustc(&compiler) {
             return;
         } else if compiler_to_use != compiler {
             builder.ensure(Rustc { compiler: compiler_to_use, target });
@@ -907,14 +906,14 @@ impl Step for Sysroot {
 
         // stage0-sysroot stores master libstd for the beta compiler.
         // When not using the beta compiler, there's no need to override the sysroot.
-        let sysroot = if compiler.stage == 0 && !use_cached_rustc(&compiler) {
+        let sysroot = if compiler.stage == 0 && !builder.use_cached_rustc(&compiler) {
             builder.out.join(&compiler.host.triple).join("stage0-sysroot")
         } else {
             builder.out.join(&compiler.host.triple).join(format!("stage{}", compiler.stage))
         };
 
         // The sysroot is copied to stage1/ in Assemble, not here.
-        if use_cached_rustc(&compiler) {
+        if builder.use_cached_rustc(&compiler) {
             return INTERNER.intern_path(sysroot);
         }
 
@@ -1086,7 +1085,7 @@ impl Step for Assemble {
         t!(fs::create_dir_all(&bindir));
         let compiler = builder.rustc(target_compiler);
 
-        if use_cached_rustc(&build_compiler) {
+        if builder.use_cached_rustc(&build_compiler) {
             let stage0 = builder.out.join(&*build_compiler.host.triple).join("stage0");
             builder.cp_r(&stage0, &builder.sysroot(target_compiler));
         } else {

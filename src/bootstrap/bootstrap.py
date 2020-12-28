@@ -631,29 +631,14 @@ class RustBuild(object):
         merge_base = ["git", "merge-base", "HEAD", "{}/master".format(rust_lang_remote)]
         commit = subprocess.check_output(merge_base, universal_newlines=True).strip()
 
-        # Next, check if there were changes to the compiler since the ancestor commit.
-        # If so, rebuild instead of using an outdated version of the code.
+        # Warn if there were changes to the compiler since the ancestor commit.
         rev_parse = ["git", "rev-parse", "--show-toplevel"]
         top_level = subprocess.check_output(rev_parse, universal_newlines=True).strip()
         compiler = "{}/compiler/".format(top_level)
-        # This is slightly more coarse than it needs to be; it rebuild on *any* changes, not just
-        # changes to code.
         status = subprocess.call(["git", "diff-index", "--quiet", commit, "--", compiler])
         if status != 0:
-            if self.verbose:
-                print("changes to compiler/ detected, not downloading stage1")
-            return None
-        # Check for untracked files. Adding `build.rs` can change the build
-        # inputs even if no modified files were changed.
-        # Annoyingly, I can't find a way to check for untracked and modified files at the same
-        # time. Even more annoyingly, there doesn't seem to be a way to show *whether* there are
-        # untracked files without listing them.
-        ls_files = ["git", "ls-files", "-o", "--exclude-standard", "compiler/"]
-        untracked_files = subprocess.check_output(ls_files, universal_newlines=True)
-        if untracked_files != '':
-            if self.verbose:
-                print("untracked files in compiler/ detected, not downloading stage1")
-            return None
+            print("warning: `download_stage1` is enabled, but there are changes to compiler/")
+
         return commit
 
     def rustc_stamp(self):
@@ -1154,8 +1139,6 @@ def bootstrap(help_triggered):
     env["RUSTC_BOOTSTRAP"] = '1'
     if toml_path:
         env["BOOTSTRAP_CONFIG"] = toml_path
-    if build.stage1_commit is not None:
-        env["BOOTSTRAP_CACHE_STAGE1"] = "1"
     run(args, env=env, verbose=build.verbose)
 
 

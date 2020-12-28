@@ -80,6 +80,7 @@ pub struct Config {
     pub cmd: Subcommand,
     pub incremental: bool,
     pub dry_run: bool,
+    pub download_stage1: bool,
 
     pub deny_warnings: bool,
     pub backtrace_on_ice: bool,
@@ -883,6 +884,8 @@ impl Config {
             config.rust_codegen_units_std = rust.codegen_units_std.map(threads_from_config);
             config.rust_profile_use = flags.rust_profile_use.or(rust.profile_use);
             config.rust_profile_generate = flags.rust_profile_generate.or(rust.profile_generate);
+
+            config.download_stage1 = rust.download_stage1.unwrap_or(false);
         } else {
             config.rust_profile_use = flags.rust_profile_use;
             config.rust_profile_generate = flags.rust_profile_generate;

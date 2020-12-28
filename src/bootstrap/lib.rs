@@ -169,10 +169,6 @@ use crate::cache::{Interned, INTERNER};
 pub use crate::config::Config;
 pub use crate::flags::Subcommand;
 
-fn use_cached_rustc(compiler: &Compiler) -> bool {
-    std::env::var("BOOTSTRAP_CACHE_STAGE1").is_ok() && compiler.stage == 0
-}
-
 const LLVM_TOOLS: &[&str] = &[
     "llvm-cov",      // used to generate coverage report
     "llvm-nm",       // used to inspect binaries; it shows symbol names, their sizes and visibility

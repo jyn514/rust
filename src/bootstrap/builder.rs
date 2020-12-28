@@ -629,7 +629,7 @@ impl<'a> Builder<'a> {
                     .join("rustlib")
                     .join(self.target.triple)
                     .join("lib");
-                if !crate::use_cached_rustc(&self.compiler) {
+                if !builder.use_cached_rustc(&self.compiler) {
                     let _ = fs::remove_dir_all(&sysroot);
                     t!(fs::create_dir_all(&sysroot));
                 }
@@ -700,6 +700,10 @@ impl<'a> Builder<'a> {
         }
 
         add_dylib_path(vec![self.rustc_libdir(compiler)], cmd);
+    }
+
+    pub fn use_cached_rustc(&self, compiler: &Compiler) -> bool {
+        self.config.download_stage1 && compiler.stage == 0
     }
 
     /// Gets a path to the compiler specified.
