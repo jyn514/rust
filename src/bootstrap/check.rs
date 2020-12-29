@@ -73,7 +73,8 @@ impl Step for Std {
 
     fn run(self, builder: &Builder<'_>) {
         let target = self.target;
-        let compiler = builder.compiler(0, builder.config.build);
+        let stage = if builder.config.download_stage1 { 1 } else { 0 };
+        let compiler = builder.compiler(stage, builder.config.build);
 
         let mut cargo = builder.cargo(
             compiler,
@@ -84,7 +85,10 @@ impl Step for Std {
         );
         std_cargo(builder, target, compiler.stage, &mut cargo);
 
-        builder.info(&format!("Checking std artifacts ({} -> {})", &compiler.host, target));
+        builder.info(&format!(
+            "Checking stage {} std artifacts ({} -> {})",
+            stage, &compiler.host, target
+        ));
         run_cargo(
             builder,
             cargo,
@@ -124,8 +128,8 @@ impl Step for Std {
             }
 
             builder.info(&format!(
-                "Checking std test/bench/example targets ({} -> {})",
-                &compiler.host, target
+                "Checking stage {} std test/bench/example targets ({} -> {})",
+                stage, &compiler.host, target
             ));
             run_cargo(
                 builder,
@@ -163,6 +167,9 @@ impl Step for Rustc {
     /// the `compiler` targeting the `target` architecture. The artifacts
     /// created will also be linked into the sysroot directory.
     fn run(self, builder: &Builder<'_>) {
+        if builder.config.download_stage1 {
+            return;
+        }
         let compiler = builder.compiler(0, builder.config.build);
         let target = self.target;
 
