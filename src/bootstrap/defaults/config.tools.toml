@@ -8,7 +8,7 @@ debug-logging = true
 # This greatly increases the speed of rebuilds, especially when there are only minor changes. However, it makes the initial build slightly slower.
 incremental = true
 # This avoids recompiling rustc if you haven't changed it.
-download_stage1 = true
+download-stage1 = true
 
 [llvm]
 # Will download LLVM from CI if available on your platform (Linux only for now)
