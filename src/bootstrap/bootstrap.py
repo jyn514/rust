@@ -1088,7 +1088,6 @@ def bootstrap(help_triggered):
     env["BOOTSTRAP_PARENT_ID"] = str(os.getpid())
     env["BOOTSTRAP_PYTHON"] = sys.executable
     env["BUILD_DIR"] = build.build_dir
-    env["RUSTC_BOOTSTRAP"] = '1'
     if toml_path:
         env["BOOTSTRAP_CONFIG"] = toml_path
     run(args, env=env, verbose=build.verbose)
