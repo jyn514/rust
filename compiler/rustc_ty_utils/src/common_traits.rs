@@ -5,6 +5,7 @@ use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DUMMY_SP;
 use rustc_trait_selection::traits;
+use rustc_trait_selection::traits::error_reporting::InferCtxtExt;
 
 fn is_copy_raw<'tcx>(tcx: TyCtxt<'tcx>, query: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
     is_item_raw(tcx, query, LangItem::Copy)
@@ -26,13 +27,16 @@ fn is_item_raw<'tcx>(
     let (param_env, ty) = query.into_parts();
     let trait_def_id = tcx.require_lang_item(item, None);
     tcx.infer_ctxt().enter(|infcx| {
-        traits::type_known_to_meet_bound_modulo_regions(
+        match traits::type_known_to_meet_bound_modulo_regions(
             &infcx,
             param_env,
             ty,
             trait_def_id,
             DUMMY_SP,
-        )
+        ) {
+            Ok(is_item) =>  is_item,
+            Err(overflow) => infcx.report_overflow_error(),
+        }
     })
 }
 

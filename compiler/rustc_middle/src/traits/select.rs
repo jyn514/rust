@@ -250,10 +250,10 @@ impl EvaluationResult {
 
 /// Indicates that trait evaluation caused overflow.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, HashStable)]
-pub struct OverflowError;
+pub struct OverflowError<'tcx, T>(Obligation<'tcx, T>);
 
 impl<'tcx> From<OverflowError> for SelectionError<'tcx> {
-    fn from(OverflowError: OverflowError) -> SelectionError<'tcx> {
+    fn from(_: OverflowError) -> SelectionError<'tcx> {
         SelectionError::Overflow
     }
 }
