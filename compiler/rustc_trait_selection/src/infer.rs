@@ -1,5 +1,5 @@
 use crate::traits::query::outlives_bounds::InferCtxtExt as _;
-use crate::traits::{self, TraitEngine, TraitEngineExt};
+use crate::traits::{self, OverflowError, TraitEngine, TraitEngineExt};
 
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
@@ -21,7 +21,7 @@ pub trait InferCtxtExt<'tcx> {
         param_env: ty::ParamEnv<'tcx>,
         ty: Ty<'tcx>,
         span: Span,
-    ) -> bool;
+    ) -> Result<bool, OverflowError>;
 
     fn partially_normalize_associated_types_in<T>(
         &self,
@@ -40,11 +40,11 @@ impl<'cx, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'cx, 'tcx> {
         param_env: ty::ParamEnv<'tcx>,
         ty: Ty<'tcx>,
         span: Span,
-    ) -> bool {
+    ) -> Result<bool, OverflowError> {
         let ty = self.resolve_vars_if_possible(ty);
 
         if !(param_env, ty).needs_infer() {
-            return ty.is_copy_modulo_regions(self.tcx.at(span), param_env);
+            return Ok(ty.is_copy_modulo_regions(self.tcx.at(span), param_env));
         }
 
         let copy_def_id = self.tcx.require_lang_item(LangItem::Copy, None);

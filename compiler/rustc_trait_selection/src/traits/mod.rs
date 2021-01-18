@@ -127,7 +127,7 @@ pub fn type_known_to_meet_bound_modulo_regions<'a, 'tcx>(
     ty: Ty<'tcx>,
     def_id: DefId,
     span: Span,
-) -> bool {
+) -> Result<bool, OverflowError> {
     debug!(
         "type_known_to_meet_bound_modulo_regions(ty={:?}, bound={:?})",
         ty,
@@ -142,7 +142,7 @@ pub fn type_known_to_meet_bound_modulo_regions<'a, 'tcx>(
         predicate: trait_ref.without_const().to_predicate(infcx.tcx),
     };
 
-    let result = infcx.predicate_must_hold_modulo_regions(&obligation);
+    let result = infcx.predicate_must_hold_modulo_regions(&obligation)?;
     debug!(
         "type_known_to_meet_ty={:?} bound={} => {:?}",
         ty,
@@ -150,7 +150,7 @@ pub fn type_known_to_meet_bound_modulo_regions<'a, 'tcx>(
         result
     );
 
-    if result && ty.has_infer_types_or_consts() {
+    let bound_met = if result && ty.has_infer_types_or_consts() {
         // Because of inference "guessing", selection can sometimes claim
         // to succeed while the success requires a guess. To ensure
         // this function's result remains infallible, we must confirm
@@ -192,7 +192,8 @@ pub fn type_known_to_meet_bound_modulo_regions<'a, 'tcx>(
         }
     } else {
         result
-    }
+    };
+    Ok(bound_met)
 }
 
 fn do_normalize_predicates<'tcx>(
@@ -474,9 +475,13 @@ fn vtable_methods<'tcx>(
             let def_id = trait_method.def_id;
 
             // Some methods cannot be called on an object; skip those.
-            if !is_vtable_safe_method(tcx, trait_ref.def_id(), &trait_method) {
-                debug!("vtable_methods: not vtable safe");
-                return None;
+            match is_vtable_safe_method(tcx, trait_ref.def_id(), &trait_method) {
+                Ok(true) => {}
+                Ok(false) => {
+                    debug!("vtable_methods: not vtable safe");
+                    return None;
+                }
+                Err(OverflowError) => todo!("handle overflow for is_vtable_safe_method"),
             }
 
             // The method may have some early-bound lifetimes; add regions for those.
@@ -521,7 +526,7 @@ fn type_implements_trait<'tcx>(
         SubstsRef<'tcx>,
         ParamEnv<'tcx>,
     ),
-) -> bool {
+) -> Result<bool, OverflowError> {
     let (trait_def_id, ty, params, param_env) = key;
 
     debug!(

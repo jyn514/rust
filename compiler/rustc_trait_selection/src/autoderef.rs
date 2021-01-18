@@ -1,5 +1,5 @@
 use crate::traits::query::evaluate_obligation::InferCtxtExt;
-use crate::traits::{self, TraitEngine};
+use crate::traits::{self, TraitEngine, OverflowError};
 use rustc_errors::struct_span_err;
 use rustc_hir as hir;
 use rustc_infer::infer::InferCtxt;
@@ -40,7 +40,7 @@ pub struct Autoderef<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> Iterator for Autoderef<'a, 'tcx> {
-    type Item = (Ty<'tcx>, usize);
+    type Item = Result<(Ty<'tcx>, usize), OverflowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let tcx = self.infcx.tcx;
@@ -49,7 +49,7 @@ impl<'a, 'tcx> Iterator for Autoderef<'a, 'tcx> {
         if self.state.at_start {
             self.state.at_start = false;
             debug!("autoderef stage #0 is {:?}", self.state.cur_ty);
-            return Some((self.state.cur_ty, 0));
+            return Some(Ok((self.state.cur_ty, 0)));
         }
 
         // If we have reached the recursion limit, error gracefully.
@@ -69,10 +69,11 @@ impl<'a, 'tcx> Iterator for Autoderef<'a, 'tcx> {
         let (kind, new_ty) =
             if let Some(mt) = self.state.cur_ty.builtin_deref(self.include_raw_pointers) {
                 (AutoderefKind::Builtin, mt.ty)
-            } else if let Some(ty) = self.overloaded_deref_ty(self.state.cur_ty) {
-                (AutoderefKind::Overloaded, ty)
             } else {
-                return None;
+                match self.overloaded_deref_ty(self.state.cur_ty) {
+                    Ok(ty) => (AutoderefKind::Overloaded, ty?),
+                    Err(OverflowError {}) => return Some(Err(OverflowError)),
+                }
             };
 
         if new_ty.references_error() {
@@ -88,7 +89,7 @@ impl<'a, 'tcx> Iterator for Autoderef<'a, 'tcx> {
         );
         self.state.cur_ty = new_ty;
 
-        Some((self.state.cur_ty, self.step_count()))
+        Some(Ok((self.state.cur_ty, self.step_count())))
     }
 }
 
@@ -119,14 +120,17 @@ impl<'a, 'tcx> Autoderef<'a, 'tcx> {
         }
     }
 
-    fn overloaded_deref_ty(&mut self, ty: Ty<'tcx>) -> Option<Ty<'tcx>> {
+    fn overloaded_deref_ty(&mut self, ty: Ty<'tcx>) -> Result<Option<Ty<'tcx>>, OverflowError> {
         debug!("overloaded_deref_ty({:?})", ty);
 
         let tcx = self.infcx.tcx;
 
         // <ty as Deref>
         let trait_ref = TraitRef {
-            def_id: tcx.lang_items().deref_trait()?,
+            def_id: match tcx.lang_items().deref_trait() {
+                Some(t) => t,
+                None => return Ok(None),
+            },
             substs: tcx.mk_substs_trait(ty, &[]),
         };
 
@@ -137,9 +141,9 @@ impl<'a, 'tcx> Autoderef<'a, 'tcx> {
             self.param_env,
             trait_ref.without_const().to_predicate(tcx),
         );
-        if !self.infcx.predicate_may_hold(&obligation) {
+        if !self.infcx.predicate_may_hold(&obligation)? {
             debug!("overloaded_deref_ty: cannot match obligation");
-            return None;
+            return Ok(None);
         }
 
         let mut fulfillcx = traits::FulfillmentContext::new_in_snapshot();
@@ -158,13 +162,13 @@ impl<'a, 'tcx> Autoderef<'a, 'tcx> {
             // but that's not a reason for an ICE (`predicate_may_hold` is conservative
             // by design).
             debug!("overloaded_deref_ty: encountered errors {:?} while fulfilling", e);
-            return None;
+            return Ok(None);
         }
         let obligations = fulfillcx.pending_obligations();
         debug!("overloaded_deref_ty({:?}) = ({:?}, {:?})", ty, normalized_ty, obligations);
         self.state.obligations.extend(obligations);
 
-        Some(self.infcx.resolve_vars_if_possible(normalized_ty))
+        Ok(Some(self.infcx.resolve_vars_if_possible(normalized_ty)))
     }
 
     /// Returns the final type we ended up with, which may be an inference

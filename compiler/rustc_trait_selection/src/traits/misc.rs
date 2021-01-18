@@ -1,7 +1,7 @@
 //! Miscellaneous type-system utilities that are too small to deserve their own modules.
 
 use crate::infer::InferCtxtExt as _;
-use crate::traits::{self, ObligationCause};
+use crate::traits::{self, ObligationCause, OverflowError};
 
 use rustc_hir as hir;
 use rustc_infer::infer::TyCtxtInferExt;
@@ -14,6 +14,13 @@ pub enum CopyImplementationError<'tcx> {
     InfrigingFields(Vec<&'tcx ty::FieldDef>),
     NotAnAdt,
     HasDestructor,
+    Overflow,
+}
+
+impl<'tcx> From<OverflowError> for CopyImplementationError<'tcx> {
+    fn from(_: OverflowError) -> Self {
+        CopyImplementationError::Overflow
+    }
 }
 
 pub fn can_type_implement_copy(
@@ -52,7 +59,7 @@ pub fn can_type_implement_copy(
                 let ctx = traits::FulfillmentContext::new();
                 match traits::fully_normalize(&infcx, ctx, cause, param_env, ty) {
                     Ok(ty) => {
-                        if !infcx.type_is_copy_modulo_regions(param_env, ty, span) {
+                        if !infcx.type_is_copy_modulo_regions(param_env, ty, span)? {
                             infringing.push(field);
                         }
                     }

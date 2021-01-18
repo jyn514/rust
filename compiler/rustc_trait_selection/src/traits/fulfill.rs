@@ -3,7 +3,7 @@ use rustc_data_structures::obligation_forest::ProcessResult;
 use rustc_data_structures::obligation_forest::{Error, ForestObligation, Outcome};
 use rustc_data_structures::obligation_forest::{ObligationForest, ObligationProcessor};
 use rustc_errors::ErrorReported;
-use rustc_infer::traits::{TraitEngine, TraitEngineExt as _, TraitObligation};
+use rustc_infer::traits::{TraitEngine, TraitEngineExt as _, TraitObligation, OverflowError};
 use rustc_middle::mir::interpret::ErrorHandled;
 use rustc_middle::ty::error::ExpectedFound;
 use rustc_middle::ty::ToPredicate;
@@ -611,12 +611,16 @@ impl<'a, 'b, 'tcx> FulfillProcessor<'a, 'b, 'tcx> {
         if obligation.predicate.is_global() {
             // no type variables present, can use evaluation for better caching.
             // FIXME: consider caching errors too.
-            if infcx.predicate_must_hold_considering_regions(obligation) {
-                debug!(
-                    "selecting trait at depth {} evaluated to holds",
-                    obligation.recursion_depth
-                );
-                return ProcessResult::Changed(vec![]);
+            match infcx.predicate_must_hold_considering_regions(obligation) {
+                Err(OverflowError {}) => return ProcessResult::Error(FulfillmentErrorCode::CodeOverflow),
+                Ok(true) => {
+                    debug!(
+                        "selecting trait at depth {} evaluated to holds",
+                        obligation.recursion_depth
+                    );
+                    return ProcessResult::Changed(vec![]);
+                }
+                Ok(false) => {}
             }
         }
 

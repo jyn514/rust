@@ -13,7 +13,7 @@ use super::elaborate_predicates;
 use crate::infer::TyCtxtInferExt;
 use crate::traits::const_evaluatable::{self, AbstractConst};
 use crate::traits::query::evaluate_obligation::InferCtxtExt;
-use crate::traits::{self, Obligation, ObligationCause};
+use crate::traits::{self, Obligation, ObligationCause, OverflowError};
 use rustc_errors::FatalError;
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
@@ -68,18 +68,19 @@ fn object_safety_violations(
 /// object. Note that object-safe traits can have some
 /// non-vtable-safe methods, so long as they require `Self: Sized` or
 /// otherwise ensure that they cannot be used when `Self = Trait`.
-pub fn is_vtable_safe_method(tcx: TyCtxt<'_>, trait_def_id: DefId, method: &ty::AssocItem) -> bool {
+pub fn is_vtable_safe_method(tcx: TyCtxt<'_>, trait_def_id: DefId, method: &ty::AssocItem) -> Result<bool, OverflowError> {
     debug_assert!(tcx.generics_of(trait_def_id).has_self);
     debug!("is_vtable_safe_method({:?}, {:?})", trait_def_id, method);
     // Any method that has a `Self: Sized` bound cannot be called.
     if generics_require_sized_self(tcx, method.def_id) {
-        return false;
+        return Ok(false);
     }
 
-    match virtual_call_violation_for_method(tcx, trait_def_id, method) {
+    let is_safe = match virtual_call_violation_for_method(tcx, trait_def_id, method)? {
         None | Some(MethodViolationCode::WhereClauseReferencesSelf) => true,
         Some(_) => false,
-    }
+    };
+    Ok(is_safe)
 }
 
 fn object_safety_violations_for_trait(
@@ -359,7 +360,10 @@ fn object_safety_violation_for_method(
         return None;
     }
 
-    let violation = virtual_call_violation_for_method(tcx, trait_def_id, method);
+    let violation = match virtual_call_violation_for_method(tcx, trait_def_id, method) {
+        Ok(v) => v,
+        Err(OverflowError) => todo!("handle overflow for virtual_call_violation_for_method"),
+    };
     // Get an accurate span depending on the violation.
     violation.map(|v| {
         let node = tcx.hir().get_if_local(method.def_id);
@@ -389,7 +393,7 @@ fn virtual_call_violation_for_method<'tcx>(
     tcx: TyCtxt<'tcx>,
     trait_def_id: DefId,
     method: &ty::AssocItem,
-) -> Option<MethodViolationCode> {
+) -> Result<Option<MethodViolationCode>, OverflowError> {
     let sig = tcx.fn_sig(method.def_id);
 
     // The method's first parameter must be named `self`
@@ -410,26 +414,26 @@ fn virtual_call_violation_for_method<'tcx>(
             .unwrap_or_else(|| sm.next_point(method.ident.span))
             .shrink_to_hi());
         let self_span = sm.span_through_char(self_span, '(').shrink_to_hi();
-        return Some(MethodViolationCode::StaticMethod(
+        return Ok(Some(MethodViolationCode::StaticMethod(
             sugg,
             self_span,
             !sig.inputs().skip_binder().is_empty(),
-        ));
+        )));
     }
 
     for (i, &input_ty) in sig.skip_binder().inputs()[1..].iter().enumerate() {
         if contains_illegal_self_type_reference(tcx, trait_def_id, sig.rebind(input_ty)) {
-            return Some(MethodViolationCode::ReferencesSelfInput(i));
+            return Ok(Some(MethodViolationCode::ReferencesSelfInput(i)));
         }
     }
     if contains_illegal_self_type_reference(tcx, trait_def_id, sig.output()) {
-        return Some(MethodViolationCode::ReferencesSelfOutput);
+        return Ok(Some(MethodViolationCode::ReferencesSelfOutput));
     }
 
     // We can't monomorphize things like `fn foo<A>(...)`.
     let own_counts = tcx.generics_of(method.def_id).own_counts();
     if own_counts.types + own_counts.consts != 0 {
-        return Some(MethodViolationCode::Generic);
+        return Ok(Some(MethodViolationCode::Generic));
     }
 
     if tcx
@@ -442,7 +446,7 @@ fn virtual_call_violation_for_method<'tcx>(
         .filter(|(p, _)| p.to_opt_type_outlives().is_none())
         .any(|pred| contains_illegal_self_type_reference(tcx, trait_def_id, pred))
     {
-        return Some(MethodViolationCode::WhereClauseReferencesSelf);
+        return Ok(Some(MethodViolationCode::WhereClauseReferencesSelf));
     }
 
     let receiver_ty =
@@ -453,8 +457,8 @@ fn virtual_call_violation_for_method<'tcx>(
     // FIXME(mikeyhew) get rid of this `if` statement once `receiver_is_dispatchable` allows
     // `Receiver: Unsize<Receiver[Self => dyn Trait]>`.
     if receiver_ty != tcx.types.self_param {
-        if !receiver_is_dispatchable(tcx, method, receiver_ty) {
-            return Some(MethodViolationCode::UndispatchableReceiver);
+        if !receiver_is_dispatchable(tcx, method, receiver_ty)? {
+            return Ok(Some(MethodViolationCode::UndispatchableReceiver));
         } else {
             // Do sanity check to make sure the receiver actually has the layout of a pointer.
 
@@ -515,7 +519,7 @@ fn virtual_call_violation_for_method<'tcx>(
         }
     }
 
-    None
+    Ok(None)
 }
 
 /// Performs a type substitution to produce the version of `receiver_ty` when `Self = self_ty`.
@@ -640,7 +644,7 @@ fn receiver_is_dispatchable<'tcx>(
     tcx: TyCtxt<'tcx>,
     method: &ty::AssocItem,
     receiver_ty: Ty<'tcx>,
-) -> bool {
+) -> Result<bool, OverflowError> {
     debug!("receiver_is_dispatchable: method = {:?}, receiver_ty = {:?}", method, receiver_ty);
 
     let traits = (tcx.lang_items().unsize_trait(), tcx.lang_items().dispatch_from_dyn_trait());
@@ -648,7 +652,7 @@ fn receiver_is_dispatchable<'tcx>(
         (u, cu)
     } else {
         debug!("receiver_is_dispatchable: Missing Unsize or DispatchFromDyn traits");
-        return false;
+        return Ok(false);
     };
 
     // the type `U` in the query

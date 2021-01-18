@@ -79,6 +79,7 @@ pub enum FulfillmentErrorCode<'tcx> {
     CodeSubtypeError(ExpectedFound<Ty<'tcx>>, TypeError<'tcx>), // always comes from a SubtypePredicate
     CodeConstEquateError(ExpectedFound<&'tcx Const<'tcx>>, TypeError<'tcx>),
     CodeAmbiguity,
+    CodeOverflow,
 }
 
 impl<'tcx, O> Obligation<'tcx, O> {

@@ -480,13 +480,13 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
         };
 
         if let ty::Ref(region, base_ty, mutbl) = *real_ty.kind() {
-            let mut autoderef = Autoderef::new(self, param_env, body_id, span, base_ty, span);
-            if let Some(steps) = autoderef.find_map(|(ty, steps)| {
+            let autoderef = Autoderef::new(self, param_env, body_id, span, base_ty, span);
+            if let Some(steps) = autoderef.filter_map(|res| res.ok()).find_map(|(ty, steps)| {
                 // Re-add the `&`
                 let ty = self.tcx.mk_ref(region, TypeAndMut { ty, mutbl });
                 let obligation =
                     self.mk_trait_obligation_with_new_self_ty(param_env, real_trait_ref, ty);
-                Some(steps).filter(|_| self.predicate_may_hold(&obligation))
+                Some(steps).filter(|_| self.predicate_may_hold(&obligation) == Ok(true))
             }) {
                 if steps > 0 {
                     if let Ok(src) = self.tcx.sess.source_map().span_to_snippet(span) {
@@ -670,7 +670,7 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                 new_trait_ref.without_const().to_predicate(self.tcx),
             );
 
-            if self.predicate_must_hold_modulo_regions(&new_obligation) {
+            if self.predicate_must_hold_modulo_regions(&new_obligation) == Ok(true) {
                 if let Ok(snippet) = self.tcx.sess.source_map().span_to_snippet(span) {
                     // We have a very specific type of error, where just borrowing this argument
                     // might solve the problem. In cases like this, the important part is the
@@ -757,7 +757,7 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                         suggested_ty,
                     );
 
-                    if self.predicate_may_hold(&new_obligation) {
+                    if self.predicate_may_hold(&new_obligation) == Ok(true) {
                         let sp = self
                             .tcx
                             .sess
@@ -832,8 +832,9 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                     suggested_ty,
                 );
                 let suggested_ty_would_satisfy_obligation = self
-                    .evaluate_obligation_no_overflow(&new_obligation)
-                    .must_apply_modulo_regions();
+                    .evaluate_obligation(&new_obligation)
+                    .map(|eval_result| eval_result.must_apply_modulo_regions())
+                    .is_ok();
                 if suggested_ty_would_satisfy_obligation {
                     let sp = self
                         .tcx
@@ -1008,7 +1009,7 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                                 predicates.iter().all(|predicate| {
                                     let pred = predicate.with_self_ty(self.tcx, returned_ty);
                                     let obl = Obligation::new(cause.clone(), param_env, pred);
-                                    self.predicate_may_hold(&obl)
+                                    self.predicate_may_hold(&obl) == Ok(true)
                                 })
                             })
                     }
@@ -2227,7 +2228,7 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                     normalized_ty,
                 );
                 debug!("suggest_await_before_try: try_trait_obligation {:?}", try_obligation);
-                if self.predicate_may_hold(&try_obligation) && impls_future {
+                if self.predicate_may_hold(&try_obligation) == Ok(true) && impls_future == Ok(true) {
                     if let Ok(snippet) = self.tcx.sess.source_map().span_to_snippet(span) {
                         if snippet.ends_with('?') {
                             err.span_suggestion_verbose(

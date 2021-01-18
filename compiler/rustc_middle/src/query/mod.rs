@@ -1,3 +1,5 @@
+// N.B. these imports do not actually apply to queries.
+// If you want to import a type to be used in a query, modify `rustc_middle/src/ty/query/mod.rs` instead.
 use crate::dep_graph::SerializedDepNodeIndex;
 use crate::mir::interpret::{GlobalId, LitToConstInput};
 use crate::traits;
@@ -1550,7 +1552,7 @@ rustc_queries! {
 
         query type_implements_trait(
             key: (DefId, Ty<'tcx>, SubstsRef<'tcx>, ty::ParamEnv<'tcx>, )
-        ) -> bool {
+        ) -> Result<bool, OverflowError> {
             desc { "evaluating `type_implements_trait` `{:?}`", key }
         }
 
