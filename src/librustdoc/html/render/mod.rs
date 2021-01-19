@@ -524,6 +524,8 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
     }
 
     fn after_run(&mut self, diag: &rustc_errors::Handler) -> Result<(), Error> {
+        self.check_dead_links(diag);
+
         Arc::get_mut(&mut self.shared).unwrap().fs.close();
         let nb_errors = self.errors.iter().map(|err| diag.struct_err(&err).emit()).count();
         if nb_errors > 0 {
@@ -1520,6 +1522,16 @@ fn settings(root_path: &str, suffix: &str, themes: &[StylePath]) -> Result<Strin
 }
 
 impl Context<'_> {
+    fn check_dead_links(&mut self, diag: &rustc_errors::Handler) {
+        use cargo_deadlinks::*;
+        use rayon::iter::ParallelIterator;
+
+        let errors: Vec<_> = unavailable_urls(&self.dst, &CheckContext::default()).collect();
+        for err in errors {
+            diag.struct_warn(&err.to_string().replace('\t', "    ")).emit();
+        }
+    }
+
     fn derive_id(&self, id: String) -> String {
         let mut map = self.id_map.borrow_mut();
         map.derive(id)
