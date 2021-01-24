@@ -255,7 +255,7 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
     }
 
     fn unify_integral_variable(
-        &self,
+        &mut self,
         vid_is_expected: bool,
         vid: ty::IntVid,
         val: ty::IntVarValue,
@@ -271,7 +271,7 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
     }
 
     fn unify_float_variable(
-        &self,
+        &mut self,
         vid_is_expected: bool,
         vid: ty::FloatVid,
         val: ast::FloatTy,
@@ -381,7 +381,7 @@ impl<'infcx_borrow, 'infcx, 'tcx> CombineFields<'infcx_borrow, 'infcx, 'tcx> {
     ///
     /// - `for_vid` is a "root vid"
     fn generalize(
-        &self,
+        &mut self,
         ty: Ty<'tcx>,
         for_vid: ty::TyVid,
         dir: RelationDir,
@@ -413,9 +413,9 @@ impl<'infcx_borrow, 'infcx, 'tcx> CombineFields<'infcx_borrow, 'infcx, 'tcx> {
         debug!("generalize: trace = {:?}", self.trace);
 
         let mut generalize = Generalizer {
+            for_vid_sub_root: self.infcx.inner.type_variables().sub_root_var(for_vid),
             infcx: self.infcx,
             cause: &self.trace.cause,
-            for_vid_sub_root: self.infcx.inner.type_variables().sub_root_var(for_vid),
             for_universe,
             ambient_variance,
             needs_wf: false,
@@ -707,12 +707,10 @@ impl TypeRelation<'tcx> for Generalizer<'_, '_, 'tcx> {
 
         match c.val {
             ty::ConstKind::Infer(InferConst::Var(vid)) => {
-                let mut inner = self.infcx.inner;
-                let variable_table = &mut inner.const_unification_table();
+                let mut variable_table = self.infcx.inner.const_unification_table();
                 let var_value = variable_table.probe_value(vid);
                 match var_value.val {
                     ConstVariableValue::Known { value: u } => {
-                        drop(inner);
                         self.relate(u, u)
                     }
                     ConstVariableValue::Unknown { universe } => {

@@ -76,7 +76,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// that care about regions) with this function, you have to
     /// do it yourself, by e.g., having them be a part of the answer.
     pub fn make_query_response_ignoring_pending_obligations<T>(
-        &self,
+        &mut self,
         inference_vars: CanonicalVarValues<'tcx>,
         answer: T,
     ) -> Canonical<'tcx, QueryResponse<'tcx, T>>

@@ -1495,7 +1495,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     /// This handles inferences variables within both `param_env` and `substs` by
     /// performing the operation on their respective canonical forms.
     pub fn const_eval_resolve(
-        &self,
+        &mut self,
         param_env: ty::ParamEnv<'tcx>,
         def: ty::WithOptConstParam<DefId>,
         substs: SubstsRef<'tcx>,

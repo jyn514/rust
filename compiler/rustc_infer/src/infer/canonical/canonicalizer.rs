@@ -44,12 +44,13 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     where
         V: TypeFoldable<'tcx>,
     {
-        self.tcx.sess.perf_stats.queries_canonicalized.fetch_add(1, Ordering::Relaxed);
+        let tcx = self.tcx;
+        tcx.sess.perf_stats.queries_canonicalized.fetch_add(1, Ordering::Relaxed);
 
         Canonicalizer::canonicalize(
             value,
             Some(self),
-            self.tcx,
+            tcx,
             &CanonicalizeAllFreeRegions,
             query_state,
         )
@@ -84,11 +85,12 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     where
         V: TypeFoldable<'tcx>,
     {
+        let tcx = self.tcx;
         let mut query_state = OriginalQueryValues::default();
         Canonicalizer::canonicalize(
             value,
             Some(self),
-            self.tcx,
+            tcx,
             &CanonicalizeQueryResponse,
             &mut query_state,
         )
@@ -98,11 +100,12 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     where
         V: TypeFoldable<'tcx>,
     {
+        let tcx = self.tcx;
         let mut query_state = OriginalQueryValues::default();
         Canonicalizer::canonicalize(
             value,
             Some(self),
-            self.tcx,
+            tcx,
             &CanonicalizeUserTypeAnnotation,
             &mut query_state,
         )
@@ -129,12 +132,13 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     where
         V: TypeFoldable<'tcx>,
     {
-        self.tcx.sess.perf_stats.queries_canonicalized.fetch_add(1, Ordering::Relaxed);
+        let tcx = self.tcx;
+        tcx.sess.perf_stats.queries_canonicalized.fetch_add(1, Ordering::Relaxed);
 
         Canonicalizer::canonicalize(
             value,
             Some(self),
-            self.tcx,
+            tcx,
             &CanonicalizeFreeRegionsOtherThanStatic,
             query_state,
         )
@@ -316,6 +320,7 @@ impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'_, 'cx, 'tcx> {
             ty::ReVar(vid) => {
                 let resolved_vid = self
                     .infcx
+                    .as_mut()
                     .unwrap()
                     .inner
                     .unwrap_region_constraints()
@@ -342,7 +347,7 @@ impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'_, 'cx, 'tcx> {
         match *t.kind() {
             ty::Infer(ty::TyVar(vid)) => {
                 debug!("canonical: type var found with vid {:?}", vid);
-                match self.infcx.unwrap().probe_ty_var(vid) {
+                match self.infcx.as_mut().unwrap().probe_ty_var(vid) {
                     // `t` could be a float / int variable; canonicalize that instead.
                     Ok(t) => {
                         debug!("(resolved to {:?})", t);
@@ -352,7 +357,7 @@ impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'_, 'cx, 'tcx> {
                     // `TyVar(vid)` is unresolved, track its universe index in the canonicalized
                     // result.
                     Err(mut ui) => {
-                        if !self.infcx.unwrap().tcx.sess.opts.debugging_opts.chalk {
+                        if !self.infcx.as_ref().unwrap().tcx.sess.opts.debugging_opts.chalk {
                             // FIXME: perf problem described in #55921.
                             ui = ty::UniverseIndex::ROOT;
                         }
@@ -430,7 +435,7 @@ impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'_, 'cx, 'tcx> {
         match ct.val {
             ty::ConstKind::Infer(InferConst::Var(vid)) => {
                 debug!("canonical: const var found with vid {:?}", vid);
-                match self.infcx.unwrap().probe_const_var(vid) {
+                match self.infcx.as_mut().unwrap().probe_const_var(vid) {
                     Ok(c) => {
                         debug!("(resolved to {:?})", c);
                         return self.fold_const(c);
@@ -439,7 +444,7 @@ impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'_, 'cx, 'tcx> {
                     // `ConstVar(vid)` is unresolved, track its universe index in the
                     // canonicalized result
                     Err(mut ui) => {
-                        if !self.infcx.unwrap().tcx.sess.opts.debugging_opts.chalk {
+                        if !self.infcx.as_ref().unwrap().tcx.sess.opts.debugging_opts.chalk {
                             // FIXME: perf problem described in #55921.
                             ui = ty::UniverseIndex::ROOT;
                         }
@@ -612,8 +617,8 @@ impl<'cx, 'tcx> Canonicalizer<'_, 'cx, 'tcx> {
     }
 
     /// Returns the universe in which `vid` is defined.
-    fn region_var_universe(&self, vid: ty::RegionVid) -> ty::UniverseIndex {
-        self.infcx.unwrap().inner.unwrap_region_constraints().var_universe(vid)
+    fn region_var_universe(&mut self, vid: ty::RegionVid) -> ty::UniverseIndex {
+        self.infcx.as_mut().unwrap().inner.unwrap_region_constraints().var_universe(vid)
     }
 
     /// Creates a canonical variable (with the given `info`)
@@ -634,7 +639,7 @@ impl<'cx, 'tcx> Canonicalizer<'_, 'cx, 'tcx> {
     /// *that*. Otherwise, create a new canonical variable for
     /// `ty_var`.
     fn canonicalize_ty_var(&mut self, info: CanonicalVarInfo<'tcx>, ty_var: Ty<'tcx>) -> Ty<'tcx> {
-        let infcx = self.infcx.expect("encountered ty-var without infcx");
+        let infcx = self.infcx.as_mut().expect("encountered ty-var without infcx");
         let bound_to = infcx.shallow_resolve(ty_var);
         if bound_to != ty_var {
             self.fold_ty(bound_to)
@@ -653,7 +658,7 @@ impl<'cx, 'tcx> Canonicalizer<'_, 'cx, 'tcx> {
         info: CanonicalVarInfo<'tcx>,
         const_var: &'tcx ty::Const<'tcx>,
     ) -> &'tcx ty::Const<'tcx> {
-        let infcx = self.infcx.expect("encountered const-var without infcx");
+        let infcx = self.infcx.as_mut().expect("encountered const-var without infcx");
         let bound_to = infcx.shallow_resolve(const_var);
         if bound_to != const_var {
             self.fold_const(bound_to)
