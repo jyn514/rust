@@ -44,8 +44,8 @@ struct VariableLengths {
 }
 
 impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
-    fn variable_lengths(&self) -> VariableLengths {
-        let mut inner = self.inner;
+    fn variable_lengths(&mut self) -> VariableLengths {
+        let inner = &mut self.inner;
         VariableLengths {
             type_var_len: inner.type_variables().num_vars(),
             const_var_len: inner.const_unification_table().len(),
@@ -94,7 +94,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     /// the actual types (`?T`, `Option<?T>`) -- and remember that
     /// after the snapshot is popped, the variable `?T` is no longer
     /// unified.
-    pub fn fudge_inference_if_ok<T, E, F>(&self, f: F) -> Result<T, E>
+    pub fn fudge_inference_if_ok<T, E, F>(&mut self, f: F) -> Result<T, E>
     where
         F: FnOnce() -> Result<T, E>,
         T: TypeFoldable<'tcx>,
@@ -113,27 +113,26 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                     // going to be popped, so we will have to
                     // eliminate any references to them.
 
-                    let mut inner = this.inner;
-                    let type_vars =
+                    let type_vars = this.
                         inner.type_variables().vars_since_snapshot(variable_lengths.type_var_len);
                     let int_vars = vars_since_snapshot(
-                        &mut inner.int_unification_table(),
+                        &mut this.inner.int_unification_table(),
                         variable_lengths.int_var_len,
                     );
                     let float_vars = vars_since_snapshot(
-                        &mut inner.float_unification_table(),
+                        &mut this.inner.float_unification_table(),
                         variable_lengths.float_var_len,
                     );
-                    let region_vars = inner
+                    let region_vars = this.inner
                         .unwrap_region_constraints()
                         .vars_since_snapshot(variable_lengths.region_constraints_len);
                     let const_vars = const_vars_since_snapshot(
-                        &mut inner.const_unification_table(),
+                        &mut this.inner.const_unification_table(),
                         variable_lengths.const_var_len,
                     );
 
                     let fudger = InferenceFudger {
-                        infcx: self,
+                        infcx: this,
                         type_vars,
                         int_vars,
                         float_vars,
