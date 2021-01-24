@@ -1315,7 +1315,8 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         if !value.needs_infer() {
             return value; // Avoid duplicated subst-folding.
         }
-        let mut r = resolve::OpportunisticVarResolver::new(self);
+        let infcx: &mut Self = unimplemented!();
+        let mut r = resolve::OpportunisticVarResolver::new(infcx);
         value.fold_with(&mut r)
     }
 
@@ -1324,7 +1325,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     /// type variables in `T`, but it never constructs the final,
     /// resolved type, so it's more efficient than
     /// `resolve_vars_if_possible()`.
-    pub fn unresolved_type_vars<T>(&self, value: &T) -> Option<(Ty<'tcx>, Option<Span>)>
+    pub fn unresolved_type_vars<T>(&mut self, value: &T) -> Option<(Ty<'tcx>, Option<Span>)>
     where
         T: TypeFoldable<'tcx>,
     {

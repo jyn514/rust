@@ -13,18 +13,18 @@ use std::ops::ControlFlow;
 /// been unified with (similar to `shallow_resolve`, but deep). This is
 /// useful for printing messages etc but also required at various
 /// points for correctness.
-pub struct OpportunisticVarResolver<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+pub struct OpportunisticVarResolver<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
 }
 
-impl<'a, 'tcx> OpportunisticVarResolver<'a, 'tcx> {
+impl<'a, 'cx, 'tcx> OpportunisticVarResolver<'a, 'cx, 'tcx> {
     #[inline]
-    pub fn new(infcx: &'a InferCtxt<'a, 'tcx>) -> Self {
+    pub fn new(infcx: &'a mut InferCtxt<'cx, 'tcx>) -> Self {
         OpportunisticVarResolver { infcx }
     }
 }
 
-impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticVarResolver<'a, 'tcx> {
+impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticVarResolver<'a, '_, 'tcx> {
     fn tcx<'b>(&'b self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }
@@ -108,17 +108,17 @@ impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticRegionResolver<'a, 'tcx> {
 /// type variables that don't yet have a value. The first unresolved type is stored.
 /// It does not construct the fully resolved type (which might
 /// involve some hashing and so forth).
-pub struct UnresolvedTypeFinder<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+pub struct UnresolvedTypeFinder<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
 }
 
-impl<'a, 'tcx> UnresolvedTypeFinder<'a, 'tcx> {
-    pub fn new(infcx: &'a InferCtxt<'a, 'tcx>) -> Self {
+impl<'a, 'cx, 'tcx> UnresolvedTypeFinder<'a, 'cx, 'tcx> {
+    pub fn new(infcx: &'a mut InferCtxt<'cx, 'tcx>) -> Self {
         UnresolvedTypeFinder { infcx }
     }
 }
 
-impl<'a, 'tcx> TypeVisitor<'tcx> for UnresolvedTypeFinder<'a, 'tcx> {
+impl<'a, 'tcx> TypeVisitor<'tcx> for UnresolvedTypeFinder<'a, '_, 'tcx> {
     type BreakTy = (Ty<'tcx>, Option<Span>);
     fn visit_ty(&mut self, t: Ty<'tcx>) -> ControlFlow<Self::BreakTy> {
         let t = self.infcx.shallow_resolve(t);
