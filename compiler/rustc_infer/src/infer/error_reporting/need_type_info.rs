@@ -1,4 +1,4 @@
-use crate::infer::type_variable::TypeVariableOriginKind;
+use crate::infer::{InferCtxtInner, type_variable::TypeVariableOriginKind};
 use crate::infer::InferCtxt;
 use rustc_errors::{pluralize, struct_span_err, Applicability, DiagnosticBuilder};
 use rustc_hir as hir;
@@ -16,8 +16,8 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::borrow::Cow;
 
-struct FindHirNodeVisitor<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+struct FindHirNodeVisitor<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
     target: GenericArg<'tcx>,
     target_span: Span,
     found_node_ty: Option<Ty<'tcx>>,
@@ -29,8 +29,8 @@ struct FindHirNodeVisitor<'a, 'tcx> {
     found_use_diagnostic: Option<UseDiagnostic<'tcx>>,
 }
 
-impl<'a, 'tcx> FindHirNodeVisitor<'a, 'tcx> {
-    fn new(infcx: &'a InferCtxt<'a, 'tcx>, target: GenericArg<'tcx>, target_span: Span) -> Self {
+impl<'a, 'cx, 'tcx> FindHirNodeVisitor<'a, 'cx, 'tcx> {
+    fn new(infcx: &'a mut InferCtxt<'cx, 'tcx>, target: GenericArg<'tcx>, target_span: Span) -> Self {
         Self {
             infcx,
             target,
@@ -49,7 +49,7 @@ impl<'a, 'tcx> FindHirNodeVisitor<'a, 'tcx> {
         self.infcx.in_progress_typeck_results?.borrow().node_type_opt(hir_id)
     }
 
-    fn node_ty_contains_target(&self, hir_id: HirId) -> Option<Ty<'tcx>> {
+    fn node_ty_contains_target(&mut self, hir_id: HirId) -> Option<Ty<'tcx>> {
         self.node_type_opt(hir_id).map(|ty| self.infcx.resolve_vars_if_possible(ty)).filter(|ty| {
             ty.walk().any(|inner| {
                 inner == self.target
@@ -80,7 +80,7 @@ impl<'a, 'tcx> FindHirNodeVisitor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> Visitor<'tcx> for FindHirNodeVisitor<'a, 'tcx> {
+impl<'a, 'tcx> Visitor<'tcx> for FindHirNodeVisitor<'a, '_, 'tcx> {
     type Map = Map<'tcx>;
 
     fn nested_visit_map(&mut self) -> NestedVisitorMap<Self::Map> {
@@ -345,15 +345,14 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     /// Extracts data used by diagnostic for either types or constants
     /// which were stuck during inference.
     pub fn extract_inference_diagnostics_data(
-        &self,
+        &mut self,
         arg: GenericArg<'tcx>,
         highlight: Option<ty::print::RegionHighlightMode>,
     ) -> InferenceDiagnosticsData {
         match arg.unpack() {
             GenericArgKind::Type(ty) => {
                 if let ty::Infer(ty::TyVar(ty_vid)) = *ty.kind() {
-                    let mut inner = self.inner;
-                    let ty_vars = &inner.type_variables();
+                    let ty_vars = &self.inner.type_variables();
                     let var_origin = ty_vars.var_origin(ty_vid);
                     if let TypeVariableOriginKind::TypeParameterDefinition(name, def_id) =
                         var_origin.kind
@@ -424,7 +423,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     }
 
     pub fn emit_inference_failure_err(
-        &self,
+        &mut self,
         body_id: Option<hir::BodyId>,
         span: Span,
         arg: GenericArg<'tcx>,
@@ -434,11 +433,11 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         let arg = self.resolve_vars_if_possible(arg);
         let arg_data = self.extract_inference_diagnostics_data(arg, None);
 
-        let mut local_visitor = FindHirNodeVisitor::new(&self, arg, span);
-        let ty_to_string = |ty: Ty<'tcx>| -> String {
+        let tcx = self.tcx;
+        let mut local_visitor = FindHirNodeVisitor::new(self, arg, span);
+        let ty_to_string = |ty: Ty<'tcx>, inner: &mut InferCtxtInner<'_>| -> String {
             let mut s = String::new();
-            let mut printer = ty::print::FmtPrinter::new(self.tcx, &mut s, Namespace::TypeNS);
-            let mut inner = self.inner;
+            let mut printer = ty::print::FmtPrinter::new(tcx, &mut s, Namespace::TypeNS);
             let ty_vars = inner.type_variables();
             let getter = move |ty_vid| {
                 let var_origin = ty_vars.var_origin(ty_vid);
@@ -451,7 +450,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
             let _ = if let ty::FnDef(..) = ty.kind() {
                 // We don't want the regular output for `fn`s because it includes its path in
                 // invalid pseudo-syntax, we want the `fn`-pointer output instead.
-                ty.fn_sig(self.tcx).print(printer)
+                ty.fn_sig(tcx).print(printer)
             } else {
                 ty.print(printer)
             };
@@ -459,7 +458,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         };
 
         if let Some(body_id) = body_id {
-            let expr = self.tcx.hir().expect_expr(body_id.hir_id);
+            let expr = tcx.hir().expect_expr(body_id.hir_id);
             local_visitor.visit_expr(expr);
         }
         let err_span = if let Some(pattern) = local_visitor.found_arg_pattern {
@@ -491,7 +490,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         let is_named_and_not_impl_trait = |ty: Ty<'_>| {
             &ty.to_string() != "_" &&
                 // FIXME: Remove this check after `impl_trait_in_bindings` is stabilized. #63527
-                (!ty.is_impl_trait() || self.tcx.features().impl_trait_in_bindings)
+                (!ty.is_impl_trait() || tcx.features().impl_trait_in_bindings)
         };
 
         let ty_msg = match (local_visitor.found_node_ty, local_visitor.found_exact_method_call) {
@@ -505,7 +504,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                 format!(" for the closure `fn({}) -> {}`", args, ret)
             }
             (Some(ty), _) if is_named_and_not_impl_trait(ty) => {
-                let ty = ty_to_string(ty);
+                let ty = ty_to_string(ty, &mut local_visitor.infcx.inner);
                 format!(" for `{}`", ty)
             }
             _ => String::new(),
@@ -525,7 +524,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         //   |         the type parameter `E` is specified
         // ```
         let error_code = error_code.into();
-        let mut err = self.tcx.sess.struct_span_err_with_code(
+        let mut err = tcx.sess.struct_span_err_with_code(
             err_span,
             &format!("type annotations needed{}", ty_msg),
             error_code,
@@ -555,7 +554,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                     closure_return_type_suggestion(
                         &mut err,
                         &decl.output,
-                        self.tcx.hir().body(body_id),
+                        tcx.hir().body(body_id),
                         &ret,
                     );
                     // We don't want to give the other suggestions when the problem is the
@@ -575,11 +574,11 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                 format!("a boxed closure type like `Box<dyn Fn({}) -> {}>`", args, ret)
             }
             Some(ty) if is_named_and_not_impl_trait(ty) && arg_data.name == "_" => {
-                let ty = ty_to_string(ty);
+                let ty = ty_to_string(ty, &mut local_visitor.infcx.inner);
                 format!("the explicit type `{}`, with the type parameters specified", ty)
             }
             Some(ty) if is_named_and_not_impl_trait(ty) && ty.to_string() != arg_data.name => {
-                let ty = ty_to_string(ty);
+                let ty = ty_to_string(ty, &mut local_visitor.infcx.inner);
                 format!(
                     "the explicit type `{}`, where the type parameter `{}` is specified",
                     ty, arg_data.name,
@@ -616,7 +615,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                 //    |             this method call resolves to `std::option::Option<&T>`
                 //    |
                 //    = note: type must be known at this point
-                self.annotate_method_call(segment, e, &mut err);
+                local_visitor.infcx.annotate_method_call(segment, e, &mut err);
             }
         } else if let Some(pattern) = local_visitor.found_arg_pattern {
             // We don't want to show the default label for closures.
@@ -717,7 +716,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                 //    |             this method call resolves to `std::option::Option<&T>`
                 //    |
                 //    = note: type must be known at this point
-                self.annotate_method_call(segment, e, &mut err);
+                local_visitor.infcx.annotate_method_call(segment, e, &mut err);
             }
         }
         // Instead of the following:
@@ -831,7 +830,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     }
 
     pub fn need_type_info_err_in_generator(
-        &self,
+        &mut self,
         kind: hir::GeneratorKind,
         span: Span,
         ty: Ty<'tcx>,
