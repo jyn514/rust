@@ -158,7 +158,7 @@ impl<'a, 'tcx> OutlivesEnvironment<'tcx> {
     /// `RegionConstraintData`.)
     pub fn add_outlives_bounds<I>(
         &mut self,
-        infcx: Option<&InferCtxt<'a, 'tcx>>,
+        infcx: Option<&mut InferCtxt<'a, 'tcx>>,
         outlives_bounds: I,
     ) where
         I: IntoIterator<Item = OutlivesBound<'tcx>>,
@@ -172,7 +172,7 @@ impl<'a, 'tcx> OutlivesEnvironment<'tcx> {
                     r_a @ (&ty::ReEarlyBound(_) | &ty::ReFree(_)),
                     &ty::ReVar(vid_b),
                 ) => {
-                    infcx.expect("no infcx provided but region vars found").add_given(r_a, vid_b);
+                    infcx.as_mut().expect("no infcx provided but region vars found").add_given(r_a, vid_b);
                 }
                 OutlivesBound::RegionSubParam(r_a, param_b) => {
                     self.region_bound_pairs_accum.push((r_a, GenericKind::Param(param_b)));

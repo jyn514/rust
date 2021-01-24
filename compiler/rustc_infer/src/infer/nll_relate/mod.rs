@@ -877,7 +877,7 @@ where
             }
 
             ty::Infer(ty::TyVar(vid)) => {
-                let variables = self.delegate.infcx().inner.type_variables();
+                let mut variables = self.delegate.infcx().inner.type_variables();
                 let vid = variables.root_var(vid);
                 let sub_vid = variables.sub_root_var(vid);
                 if sub_vid == self.for_vid_sub_root {

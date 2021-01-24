@@ -55,17 +55,17 @@ impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticVarResolver<'a, '_, 'tcx> {
 ///
 /// If you want to resolve type and const variables as well, call
 /// [InferCtxt::resolve_vars_if_possible] first.
-pub struct OpportunisticRegionResolver<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+pub struct OpportunisticRegionResolver<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
 }
 
-impl<'a, 'tcx> OpportunisticRegionResolver<'a, 'tcx> {
-    pub fn new(infcx: &'a InferCtxt<'a, 'tcx>) -> Self {
+impl<'a, 'cx, 'tcx> OpportunisticRegionResolver<'a, 'cx, 'tcx> {
+    pub fn new(infcx: &'a mut InferCtxt<'cx, 'tcx>) -> Self {
         OpportunisticRegionResolver { infcx }
     }
 }
 
-impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticRegionResolver<'a, 'tcx> {
+impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticRegionResolver<'a, '_, 'tcx> {
     fn tcx<'b>(&'b self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }
