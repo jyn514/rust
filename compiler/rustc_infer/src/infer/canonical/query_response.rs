@@ -262,7 +262,6 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
 
                 (GenericArgKind::Type(v1), GenericArgKind::Type(v2)) => {
                     TypeRelating::new(
-                        self,
                         QueryTypeRelatingDelegate {
                             infcx: self,
                             param_env,
@@ -276,7 +275,6 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
 
                 (GenericArgKind::Const(v1), GenericArgKind::Const(v2)) => {
                     TypeRelating::new(
-                        self,
                         QueryTypeRelatingDelegate {
                             infcx: self,
                             param_env,
@@ -632,14 +630,18 @@ pub fn make_query_region_constraints<'tcx>(
     QueryRegionConstraints { outlives, member_constraints: member_constraints.clone() }
 }
 
-struct QueryTypeRelatingDelegate<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+struct QueryTypeRelatingDelegate<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
     obligations: &'a mut Vec<PredicateObligation<'tcx>>,
     param_env: ty::ParamEnv<'tcx>,
     cause: &'a ObligationCause<'tcx>,
 }
 
-impl<'tcx> TypeRelatingDelegate<'tcx> for QueryTypeRelatingDelegate<'_, 'tcx> {
+impl<'a, 'cx, 'tcx> TypeRelatingDelegate<'cx, 'tcx> for QueryTypeRelatingDelegate<'a, 'cx, 'tcx> {
+    fn infcx(&self) -> &mut InferCtxt<'cx, 'tcx> {
+        self.infcx
+    }
+
     fn create_next_universe(&mut self) -> ty::UniverseIndex {
         self.infcx.create_next_universe()
     }

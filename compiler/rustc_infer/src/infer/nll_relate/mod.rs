@@ -38,14 +38,13 @@ pub enum NormalizationStrategy {
     Eager,
 }
 
-pub struct TypeRelating<'me, 'tcx, D>
+pub struct TypeRelating<'cx, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'tcx>,
+    D: TypeRelatingDelegate<'cx, 'tcx>,
 {
-    infcx: &'me InferCtxt<'me, 'tcx>,
-
     /// Callback to use when we deduce an outlives relationship
     delegate: D,
+    _infcx: std::marker::PhantomData<&'cx mut InferCtxt<'cx, 'tcx>>,
 
     /// How are we relating `a` and `b`?
     ///
@@ -71,7 +70,9 @@ where
     b_scopes: Vec<BoundRegionScope<'tcx>>,
 }
 
-pub trait TypeRelatingDelegate<'tcx> {
+pub trait TypeRelatingDelegate<'cx, 'tcx> {
+    fn infcx(&self) -> &mut InferCtxt<'cx, 'tcx>;
+
     /// Push a constraint `sup: sub` -- this constraint must be
     /// satisfied for the two types to be related. `sub` and `sup` may
     /// be regions from the type or new variables created through the
@@ -127,16 +128,15 @@ struct BoundRegionScope<'tcx> {
 #[derive(Copy, Clone)]
 struct UniversallyQuantified(bool);
 
-impl<'me, 'tcx, D> TypeRelating<'me, 'tcx, D>
+impl<D> TypeRelating<'cx, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'tcx>,
+    D: TypeRelatingDelegate<'cx, 'tcx>,
 {
     pub fn new(
-        infcx: &'me InferCtxt<'me, 'tcx>,
         delegate: D,
         ambient_variance: ty::Variance,
     ) -> Self {
-        Self { infcx, delegate, ambient_variance, a_scopes: vec![], b_scopes: vec![] }
+        Self { _infcx: std::marker::PhantomData, delegate, ambient_variance, a_scopes: vec![], b_scopes: vec![] }
     }
 
     fn ambient_covariance(&self) -> bool {
@@ -261,7 +261,7 @@ where
 
         match *value_ty.kind() {
             ty::Projection(other_projection_ty) => {
-                let var = self.infcx.next_ty_var(TypeVariableOrigin {
+                let var = self.delegate.infcx().next_ty_var(TypeVariableOrigin {
                     kind: TypeVariableOriginKind::MiscVariable,
                     span: DUMMY_SP,
                 });
@@ -308,12 +308,12 @@ where
         match *value_ty.kind() {
             ty::Infer(ty::TyVar(value_vid)) => {
                 // Two type variables: just equate them.
-                self.infcx.inner.type_variables().equate(vid, value_vid);
+                self.delegate.infcx().inner.type_variables().equate(vid, value_vid);
                 return Ok(value_ty);
             }
 
             ty::Projection(projection_ty) if D::normalization() == NormalizationStrategy::Lazy => {
-                return Ok(self.relate_projection_ty(projection_ty, self.infcx.tcx.mk_ty_var(vid)));
+                return Ok(self.relate_projection_ty(projection_ty, self.delegate.infcx().tcx.mk_ty_var(vid)));
             }
 
             _ => (),
@@ -329,7 +329,7 @@ where
             assert!(!generalized_ty.has_infer_types_or_consts());
         }
 
-        self.infcx.inner.type_variables().instantiate(vid, generalized_ty);
+        self.delegate.infcx().inner.type_variables().instantiate(vid, generalized_ty);
 
         // The generalized values we extract from `canonical_var_values` have
         // been fully instantiated and hence the set of scopes we have
@@ -352,14 +352,14 @@ where
         value: T,
         for_vid: ty::TyVid,
     ) -> RelateResult<'tcx, T> {
-        let universe = self.infcx.probe_ty_var(for_vid).unwrap_err();
+        let universe = self.delegate.infcx().probe_ty_var(for_vid).unwrap_err();
 
         let mut generalizer = TypeGeneralizer {
-            infcx: self.infcx,
+            infcx: self.delegate.infcx(),
             delegate: &mut self.delegate,
             first_free_index: ty::INNERMOST,
             ambient_variance: self.ambient_variance,
-            for_vid_sub_root: self.infcx.inner.type_variables().sub_root_var(for_vid),
+            for_vid_sub_root: self.delegate.infcx().inner.type_variables().sub_root_var(for_vid),
             universe,
         };
 
@@ -385,9 +385,9 @@ trait VidValuePair<'tcx>: Debug {
     /// Extract the scopes that apply to whichever side of the tuple
     /// the vid was found on.  See the comment where this is called
     /// for more details on why we want them.
-    fn vid_scopes<D: TypeRelatingDelegate<'tcx>>(
+    fn vid_scopes<D: TypeRelatingDelegate<'cx, 'tcx>>(
         &self,
-        relate: &'r mut TypeRelating<'_, 'tcx, D>,
+        relate: &'r mut TypeRelating<'cx, 'tcx, D>,
     ) -> &'r mut Vec<BoundRegionScope<'tcx>>;
 
     /// Given a generalized type G that should replace the vid, relate
@@ -395,11 +395,11 @@ trait VidValuePair<'tcx>: Debug {
     /// appeared.
     fn relate_generalized_ty<D>(
         &self,
-        relate: &mut TypeRelating<'_, 'tcx, D>,
+        relate: &mut TypeRelating<'cx, 'tcx, D>,
         generalized_ty: Ty<'tcx>,
     ) -> RelateResult<'tcx, Ty<'tcx>>
     where
-        D: TypeRelatingDelegate<'tcx>;
+        D: TypeRelatingDelegate<'cx, 'tcx>;
 }
 
 impl VidValuePair<'tcx> for (ty::TyVid, Ty<'tcx>) {
@@ -413,21 +413,21 @@ impl VidValuePair<'tcx> for (ty::TyVid, Ty<'tcx>) {
 
     fn vid_scopes<D>(
         &self,
-        relate: &'r mut TypeRelating<'_, 'tcx, D>,
+        relate: &'r mut TypeRelating<'cx, 'tcx, D>,
     ) -> &'r mut Vec<BoundRegionScope<'tcx>>
     where
-        D: TypeRelatingDelegate<'tcx>,
+        D: TypeRelatingDelegate<'cx, 'tcx>,
     {
         &mut relate.a_scopes
     }
 
     fn relate_generalized_ty<D>(
         &self,
-        relate: &mut TypeRelating<'_, 'tcx, D>,
+        relate: &mut TypeRelating<'cx, 'tcx, D>,
         generalized_ty: Ty<'tcx>,
     ) -> RelateResult<'tcx, Ty<'tcx>>
     where
-        D: TypeRelatingDelegate<'tcx>,
+        D: TypeRelatingDelegate<'cx, 'tcx>,
     {
         relate.relate(&generalized_ty, &self.value_ty())
     }
@@ -445,32 +445,32 @@ impl VidValuePair<'tcx> for (Ty<'tcx>, ty::TyVid) {
 
     fn vid_scopes<D>(
         &self,
-        relate: &'r mut TypeRelating<'_, 'tcx, D>,
+        relate: &'r mut TypeRelating<'cx, 'tcx, D>,
     ) -> &'r mut Vec<BoundRegionScope<'tcx>>
     where
-        D: TypeRelatingDelegate<'tcx>,
+        D: TypeRelatingDelegate<'cx, 'tcx>,
     {
         &mut relate.b_scopes
     }
 
     fn relate_generalized_ty<D>(
         &self,
-        relate: &mut TypeRelating<'_, 'tcx, D>,
+        relate: &mut TypeRelating<'cx, 'tcx, D>,
         generalized_ty: Ty<'tcx>,
     ) -> RelateResult<'tcx, Ty<'tcx>>
     where
-        D: TypeRelatingDelegate<'tcx>,
+        D: TypeRelatingDelegate<'cx, 'tcx>,
     {
         relate.relate(&self.value_ty(), &generalized_ty)
     }
 }
 
-impl<D> TypeRelation<'tcx> for TypeRelating<'me, 'tcx, D>
+impl<D> TypeRelation<'tcx> for TypeRelating<'cx, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'tcx>,
+    D: TypeRelatingDelegate<'cx, 'tcx>,
 {
     fn tcx(&self) -> TyCtxt<'tcx> {
-        self.infcx.tcx
+        self.delegate.infcx().tcx
     }
 
     // FIXME(oli-obk): not sure how to get the correct ParamEnv
@@ -509,10 +509,10 @@ where
     }
 
     fn tys(&mut self, a: Ty<'tcx>, mut b: Ty<'tcx>) -> RelateResult<'tcx, Ty<'tcx>> {
-        let a = self.infcx.shallow_resolve(a);
+        let a = self.delegate.infcx().shallow_resolve(a);
 
         if !D::forbid_inference_vars() {
-            b = self.infcx.shallow_resolve(b);
+            b = self.delegate.infcx().shallow_resolve(b);
         }
 
         if a == b {
@@ -553,7 +553,7 @@ where
                 debug!("tys(a={:?}, b={:?}, variance={:?})", a, b, self.ambient_variance);
 
                 // Will also handle unification of `IntVar` and `FloatVar`.
-                self.infcx.super_combine_tys(self, a, b)
+                self.delegate.infcx().super_combine_tys(self, a, b)
             }
         }
     }
@@ -589,10 +589,10 @@ where
         a: &'tcx ty::Const<'tcx>,
         mut b: &'tcx ty::Const<'tcx>,
     ) -> RelateResult<'tcx, &'tcx ty::Const<'tcx>> {
-        let a = self.infcx.shallow_resolve(a);
+        let a = self.delegate.infcx().shallow_resolve(a);
 
         if !D::forbid_inference_vars() {
-            b = self.infcx.shallow_resolve(b);
+            b = self.delegate.infcx().shallow_resolve(b);
         }
 
         match b.val {
@@ -601,7 +601,7 @@ where
                 bug!("unexpected inference var {:?}", b)
             }
             // FIXME(invariance): see the related FIXME above.
-            _ => self.infcx.super_combine_consts(self, a, b),
+            _ => self.delegate.infcx().super_combine_consts(self, a, b),
         }
     }
 
@@ -717,9 +717,9 @@ where
     }
 }
 
-impl<'tcx, D> ConstEquateRelation<'tcx> for TypeRelating<'_, 'tcx, D>
+impl<D> ConstEquateRelation<'tcx> for TypeRelating<'cx, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'tcx>,
+    D: TypeRelatingDelegate<'cx, 'tcx>,
 {
     fn const_equate_obligation(&mut self, a: &'tcx ty::Const<'tcx>, b: &'tcx ty::Const<'tcx>) {
         self.delegate.const_equate(a, b);
@@ -788,7 +788,7 @@ impl<'me, 'tcx> TypeVisitor<'tcx> for ScopeInstantiator<'me, 'tcx> {
 /// [blog post]: https://is.gd/0hKvIr
 struct TypeGeneralizer<'me, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'tcx>,
+    D: TypeRelatingDelegate<'me, 'tcx>,
 {
     infcx: &'me InferCtxt<'me, 'tcx>,
 
@@ -813,10 +813,10 @@ where
 
 impl<D> TypeRelation<'tcx> for TypeGeneralizer<'me, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'tcx>,
+    D: TypeRelatingDelegate<'me, 'tcx>,
 {
     fn tcx(&self) -> TyCtxt<'tcx> {
-        self.infcx.tcx
+        self.delegate.infcx().tcx
     }
 
     // FIXME(oli-obk): not sure how to get the correct ParamEnv
