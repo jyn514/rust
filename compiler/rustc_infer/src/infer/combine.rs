@@ -776,8 +776,8 @@ fn float_unification_error<'tcx>(
     TypeError::FloatMismatch(ty::relate::expected_found_bool(a_is_expected, a, b))
 }
 
-struct ConstInferUnifier<'cx, 'tcx> {
-    infcx: &'cx InferCtxt<'cx, 'tcx>,
+struct ConstInferUnifier<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
 
     span: Span,
 
@@ -794,7 +794,7 @@ struct ConstInferUnifier<'cx, 'tcx> {
 // We use `TypeRelation` here to propagate `RelateResult` upwards.
 //
 // Both inputs are expected to be the same.
-impl TypeRelation<'tcx> for ConstInferUnifier<'_, 'tcx> {
+impl TypeRelation<'tcx> for ConstInferUnifier<'_, '_, 'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }
@@ -920,8 +920,7 @@ impl TypeRelation<'tcx> for ConstInferUnifier<'_, 'tcx> {
 
         match c.val {
             ty::ConstKind::Infer(InferConst::Var(vid)) => {
-                let mut inner = self.infcx.inner;
-                let variable_table = &mut inner.const_unification_table();
+                let mut variable_table = self.infcx.inner.const_unification_table();
 
                 // Check if the current unification would end up
                 // unifying `target_vid` with a const which contains
