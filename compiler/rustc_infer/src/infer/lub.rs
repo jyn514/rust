@@ -67,8 +67,9 @@ impl TypeRelation<'tcx> for Lub<'_, 'combine, 'infcx, 'tcx> {
         debug!("{}.regions({:?}, {:?})", self.tag(), a, b);
 
         let origin = Subtype(box self.fields.trace.clone());
+        let tcx = self.tcx();
         Ok(self.fields.infcx.inner.unwrap_region_constraints().lub_regions(
-            self.tcx(),
+            tcx,
             origin,
             a,
             b,

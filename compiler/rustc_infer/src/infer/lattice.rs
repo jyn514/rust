@@ -55,6 +55,7 @@ where
         return Ok(a);
     }
 
+    let span = this.cause().span;
     let infcx = this.infcx();
     let a = infcx.inner.type_variables().replace_if_possible(a);
     let b = infcx.inner.type_variables().replace_if_possible(b);
@@ -78,18 +79,20 @@ where
         // iterate on the subtype obligations that are returned, but I
         // think this suffices. -nmatsakis
         (&ty::Infer(TyVar(..)), _) => {
-            let v = infcx.next_ty_var(TypeVariableOrigin {
+            let origin = TypeVariableOrigin {
                 kind: TypeVariableOriginKind::LatticeVariable,
-                span: this.cause().span,
-            });
+                span,
+            };
+            let v = infcx.next_ty_var(origin);
             this.relate_bound(v, b, a)?;
             Ok(v)
         }
         (_, &ty::Infer(TyVar(..))) => {
-            let v = infcx.next_ty_var(TypeVariableOrigin {
+            let origin = TypeVariableOrigin {
                 kind: TypeVariableOriginKind::LatticeVariable,
-                span: this.cause().span,
-            });
+                span,
+            };
+            let v = infcx.next_ty_var(origin);
             this.relate_bound(v, a, b)?;
             Ok(v)
         }

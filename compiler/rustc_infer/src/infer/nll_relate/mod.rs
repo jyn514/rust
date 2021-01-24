@@ -314,7 +314,8 @@ where
             }
 
             ty::Projection(projection_ty) if D::normalization() == NormalizationStrategy::Lazy => {
-                return Ok(self.relate_projection_ty(projection_ty, self.delegate.infcx().tcx.mk_ty_var(vid)));
+                let ty_var = self.delegate.infcx().tcx.mk_ty_var(vid);
+                return Ok(self.relate_projection_ty(projection_ty, ty_var));
             }
 
             _ => (),

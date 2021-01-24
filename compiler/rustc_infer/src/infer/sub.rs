@@ -80,7 +80,7 @@ impl TypeRelation<'tcx> for Sub<'_, 'combine, 'infcx, 'tcx> {
             return Ok(a);
         }
 
-        let infcx = self.fields.infcx;
+        let infcx = &mut *self.fields.infcx;
         let a = infcx.inner.type_variables().replace_if_possible(a);
         let b = infcx.inner.type_variables().replace_if_possible(b);
         match (a.kind(), b.kind()) {
