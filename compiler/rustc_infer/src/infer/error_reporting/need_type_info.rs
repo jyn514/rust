@@ -60,7 +60,6 @@ impl<'a, 'tcx> FindHirNodeVisitor<'a, 'tcx> {
                                 (&Infer(TyVar(a_vid)), &Infer(TyVar(b_vid))) => self
                                     .infcx
                                     .inner
-                                    .borrow_mut()
                                     .type_variables()
                                     .sub_unified(a_vid, b_vid),
                                 _ => false,
@@ -353,7 +352,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         match arg.unpack() {
             GenericArgKind::Type(ty) => {
                 if let ty::Infer(ty::TyVar(ty_vid)) = *ty.kind() {
-                    let mut inner = self.inner.borrow_mut();
+                    let mut inner = self.inner;
                     let ty_vars = &inner.type_variables();
                     let var_origin = ty_vars.var_origin(ty_vid);
                     if let TypeVariableOriginKind::TypeParameterDefinition(name, def_id) =
@@ -390,7 +389,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
             GenericArgKind::Const(ct) => {
                 if let ty::ConstKind::Infer(InferConst::Var(vid)) = ct.val {
                     let origin =
-                        self.inner.borrow_mut().const_unification_table().probe_value(vid).origin;
+                        self.inner.const_unification_table().probe_value(vid).origin;
                     if let ConstVariableOriginKind::ConstParameterDefinition(name, def_id) =
                         origin.kind
                     {
@@ -439,7 +438,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         let ty_to_string = |ty: Ty<'tcx>| -> String {
             let mut s = String::new();
             let mut printer = ty::print::FmtPrinter::new(self.tcx, &mut s, Namespace::TypeNS);
-            let mut inner = self.inner.borrow_mut();
+            let mut inner = self.inner;
             let ty_vars = inner.type_variables();
             let getter = move |ty_vid| {
                 let var_origin = ty_vars.var_origin(ty_vid);

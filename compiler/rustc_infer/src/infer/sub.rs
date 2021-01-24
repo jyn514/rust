@@ -81,8 +81,8 @@ impl TypeRelation<'tcx> for Sub<'combine, 'infcx, 'tcx> {
         }
 
         let infcx = self.fields.infcx;
-        let a = infcx.inner.borrow_mut().type_variables().replace_if_possible(a);
-        let b = infcx.inner.borrow_mut().type_variables().replace_if_possible(b);
+        let a = infcx.inner.type_variables().replace_if_possible(a);
+        let b = infcx.inner.type_variables().replace_if_possible(b);
         match (a.kind(), b.kind()) {
             (&ty::Infer(TyVar(a_vid)), &ty::Infer(TyVar(b_vid))) => {
                 // Shouldn't have any LBR here, so we can safely put
@@ -96,7 +96,7 @@ impl TypeRelation<'tcx> for Sub<'combine, 'infcx, 'tcx> {
                 // have to record in the `type_variables` tracker that
                 // the two variables are equal modulo subtyping, which
                 // is important to the occurs check later on.
-                infcx.inner.borrow_mut().type_variables().sub(a_vid, b_vid);
+                infcx.inner.type_variables().sub(a_vid, b_vid);
                 self.fields.obligations.push(Obligation::new(
                     self.fields.trace.cause.clone(),
                     self.fields.param_env,
@@ -145,7 +145,6 @@ impl TypeRelation<'tcx> for Sub<'combine, 'infcx, 'tcx> {
         self.fields
             .infcx
             .inner
-            .borrow_mut()
             .unwrap_region_constraints()
             .make_subregion(origin, a, b);
 

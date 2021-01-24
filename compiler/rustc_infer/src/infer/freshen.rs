@@ -146,14 +146,13 @@ impl<'a, 'tcx> TypeFolder<'tcx> for TypeFreshener<'a, 'tcx> {
 
         match *t.kind() {
             ty::Infer(ty::TyVar(v)) => {
-                let opt_ty = self.infcx.inner.borrow_mut().type_variables().probe(v).known();
+                let opt_ty = self.infcx.inner.type_variables().probe(v).known();
                 self.freshen_ty(opt_ty, ty::TyVar(v), ty::FreshTy)
             }
 
             ty::Infer(ty::IntVar(v)) => self.freshen_ty(
                 self.infcx
                     .inner
-                    .borrow_mut()
                     .int_unification_table()
                     .probe_value(v)
                     .map(|v| v.to_type(tcx)),
@@ -164,7 +163,6 @@ impl<'a, 'tcx> TypeFolder<'tcx> for TypeFreshener<'a, 'tcx> {
             ty::Infer(ty::FloatVar(v)) => self.freshen_ty(
                 self.infcx
                     .inner
-                    .borrow_mut()
                     .float_unification_table()
                     .probe_value(v)
                     .map(|v| v.to_type(tcx)),
@@ -219,7 +217,6 @@ impl<'a, 'tcx> TypeFolder<'tcx> for TypeFreshener<'a, 'tcx> {
                 let opt_ct = self
                     .infcx
                     .inner
-                    .borrow_mut()
                     .const_unification_table()
                     .probe_value(v)
                     .val

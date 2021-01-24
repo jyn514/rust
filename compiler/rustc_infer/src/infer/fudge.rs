@@ -45,7 +45,7 @@ struct VariableLengths {
 
 impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     fn variable_lengths(&self) -> VariableLengths {
-        let mut inner = self.inner.borrow_mut();
+        let mut inner = self.inner;
         VariableLengths {
             type_var_len: inner.type_variables().num_vars(),
             const_var_len: inner.const_unification_table().len(),
@@ -113,7 +113,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                     // going to be popped, so we will have to
                     // eliminate any references to them.
 
-                    let mut inner = self.inner.borrow_mut();
+                    let mut inner = self.inner;
                     let type_vars =
                         inner.type_variables().vars_since_snapshot(variable_lengths.type_var_len);
                     let int_vars = vars_since_snapshot(
@@ -197,7 +197,7 @@ impl<'a, 'tcx> TypeFolder<'tcx> for InferenceFudger<'a, 'tcx> {
                     // that it is unbound, so we can just return
                     // it.
                     debug_assert!(
-                        self.infcx.inner.borrow_mut().type_variables().probe(vid).is_unknown()
+                        self.infcx.inner.type_variables().probe(vid).is_unknown()
                     );
                     ty
                 }

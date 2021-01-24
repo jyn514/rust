@@ -137,7 +137,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
             return Ok(());
         }
 
-        self.inner.borrow_mut().unwrap_region_constraints().leak_check(
+        self.inner.unwrap_region_constraints().leak_check(
             self.tcx,
             overly_polymorphic,
             self.universe(),

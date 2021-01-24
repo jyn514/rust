@@ -84,7 +84,6 @@ impl<'a, 'tcx> TypeFolder<'tcx> for OpportunisticRegionResolver<'a, 'tcx> {
                 let resolved = self
                     .infcx
                     .inner
-                    .borrow_mut()
                     .unwrap_region_constraints()
                     .opportunistic_resolve_var(rid);
                 self.tcx().reuse_or_mk_region(r, ty::ReVar(resolved))
@@ -128,7 +127,7 @@ impl<'a, 'tcx> TypeVisitor<'tcx> for UnresolvedTypeFinder<'a, 'tcx> {
                 // Since we called `shallow_resolve` above, this must
                 // be an (as yet...) unresolved inference variable.
                 let ty_var_span = if let ty::TyVar(ty_vid) = infer_ty {
-                    let mut inner = self.infcx.inner.borrow_mut();
+                    let mut inner = self.infcx.inner;
                     let ty_vars = &inner.type_variables();
                     if let TypeVariableOrigin {
                         kind: TypeVariableOriginKind::TypeParameterDefinition(_, _),

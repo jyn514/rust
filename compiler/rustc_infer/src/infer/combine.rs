@@ -77,7 +77,6 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
             // Relate integral variables to other types
             (&ty::Infer(ty::IntVar(a_id)), &ty::Infer(ty::IntVar(b_id))) => {
                 self.inner
-                    .borrow_mut()
                     .int_unification_table()
                     .unify_var_var(a_id, b_id)
                     .map_err(|e| int_unification_error(a_is_expected, e))?;
@@ -99,7 +98,6 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
             // Relate floating-point variables to other types
             (&ty::Infer(ty::FloatVar(a_id)), &ty::Infer(ty::FloatVar(b_id))) => {
                 self.inner
-                    .borrow_mut()
                     .float_unification_table()
                     .unify_var_var(a_id, b_id)
                     .map_err(|e| float_unification_error(relation.a_is_expected(), e))?;
@@ -135,8 +133,8 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
             return Ok(a);
         }
 
-        let a = replace_if_possible(&mut self.inner.borrow_mut().const_unification_table(), a);
-        let b = replace_if_possible(&mut self.inner.borrow_mut().const_unification_table(), b);
+        let a = replace_if_possible(&mut self.inner.const_unification_table(), a);
+        let b = replace_if_possible(&mut self.inner.const_unification_table(), b);
 
         let a_is_expected = relation.a_is_expected();
 
@@ -146,7 +144,6 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
                 ty::ConstKind::Infer(InferConst::Var(b_vid)),
             ) => {
                 self.inner
-                    .borrow_mut()
                     .const_unification_table()
                     .unify_var_var(a_vid, b_vid)
                     .map_err(|e| const_unification_error(a_is_expected, e))?;
@@ -230,7 +227,7 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
         vid_is_expected: bool,
     ) -> RelateResult<'tcx, &'tcx ty::Const<'tcx>> {
         let (for_universe, span) = {
-            let mut inner = self.inner.borrow_mut();
+            let mut inner = self.inner;
             let variable_table = &mut inner.const_unification_table();
             let var_value = variable_table.probe_value(target_vid);
             match var_value.val {
@@ -244,7 +241,6 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
             .relate(ct, ct)?;
 
         self.inner
-            .borrow_mut()
             .const_unification_table()
             .unify_var_value(
                 target_vid,
@@ -267,7 +263,6 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
         val: ty::IntVarValue,
     ) -> RelateResult<'tcx, Ty<'tcx>> {
         self.inner
-            .borrow_mut()
             .int_unification_table()
             .unify_var_value(vid, Some(val))
             .map_err(|e| int_unification_error(vid_is_expected, e))?;
@@ -284,7 +279,6 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
         val: ast::FloatTy,
     ) -> RelateResult<'tcx, Ty<'tcx>> {
         self.inner
-            .borrow_mut()
             .float_unification_table()
             .unify_var_value(vid, Some(ty::FloatVarValue(val)))
             .map_err(|e| float_unification_error(vid_is_expected, e))?;
@@ -332,7 +326,7 @@ impl<'infcx, 'tcx> CombineFields<'infcx, 'tcx> {
         use self::RelationDir::*;
 
         // Get the actual variable that b_vid has been inferred to
-        debug_assert!(self.infcx.inner.borrow_mut().type_variables().probe(b_vid).is_unknown());
+        debug_assert!(self.infcx.inner.type_variables().probe(b_vid).is_unknown());
 
         debug!("instantiate(a_ty={:?} dir={:?} b_vid={:?})", a_ty, dir, b_vid);
 
@@ -352,7 +346,7 @@ impl<'infcx, 'tcx> CombineFields<'infcx, 'tcx> {
             "instantiate(a_ty={:?}, dir={:?}, b_vid={:?}, generalized b_ty={:?})",
             a_ty, dir, b_vid, b_ty
         );
-        self.infcx.inner.borrow_mut().type_variables().instantiate(b_vid, b_ty);
+        self.infcx.inner.type_variables().instantiate(b_vid, b_ty);
 
         if needs_wf {
             self.obligations.push(Obligation::new(
@@ -410,7 +404,7 @@ impl<'infcx, 'tcx> CombineFields<'infcx, 'tcx> {
 
         debug!("generalize: ambient_variance = {:?}", ambient_variance);
 
-        let for_universe = match self.infcx.inner.borrow_mut().type_variables().probe(for_vid) {
+        let for_universe = match self.infcx.inner.type_variables().probe(for_vid) {
             v @ TypeVariableValue::Known { .. } => {
                 bug!("instantiating {:?} which has a known value {:?}", for_vid, v,)
             }
@@ -423,7 +417,7 @@ impl<'infcx, 'tcx> CombineFields<'infcx, 'tcx> {
         let mut generalize = Generalizer {
             infcx: self.infcx,
             cause: &self.trace.cause,
-            for_vid_sub_root: self.infcx.inner.borrow_mut().type_variables().sub_root_var(for_vid),
+            for_vid_sub_root: self.infcx.inner.type_variables().sub_root_var(for_vid),
             for_universe,
             ambient_variance,
             needs_wf: false,
@@ -603,14 +597,14 @@ impl TypeRelation<'tcx> for Generalizer<'_, 'tcx> {
         // us from creating infinitely sized types.
         let result = match *t.kind() {
             ty::Infer(ty::TyVar(vid)) => {
-                let vid = self.infcx.inner.borrow_mut().type_variables().root_var(vid);
-                let sub_vid = self.infcx.inner.borrow_mut().type_variables().sub_root_var(vid);
+                let vid = self.infcx.inner.type_variables().root_var(vid);
+                let sub_vid = self.infcx.inner.type_variables().sub_root_var(vid);
                 if sub_vid == self.for_vid_sub_root {
                     // If sub-roots are equal, then `for_vid` and
                     // `vid` are related via subtyping.
                     Err(TypeError::CyclicTy(self.root_ty))
                 } else {
-                    let probe = self.infcx.inner.borrow_mut().type_variables().probe(vid);
+                    let probe = self.infcx.inner.type_variables().probe(vid);
                     match probe {
                         TypeVariableValue::Known { value: u } => {
                             debug!("generalize: known value {:?}", u);
@@ -637,11 +631,10 @@ impl TypeRelation<'tcx> for Generalizer<'_, 'tcx> {
                             }
 
                             let origin =
-                                *self.infcx.inner.borrow_mut().type_variables().var_origin(vid);
+                                *self.infcx.inner.type_variables().var_origin(vid);
                             let new_var_id = self
                                 .infcx
                                 .inner
-                                .borrow_mut()
                                 .type_variables()
                                 .new_var(self.for_universe, false, origin);
                             let u = self.tcx().mk_ty_var(new_var_id);
@@ -716,7 +709,7 @@ impl TypeRelation<'tcx> for Generalizer<'_, 'tcx> {
 
         match c.val {
             ty::ConstKind::Infer(InferConst::Var(vid)) => {
-                let mut inner = self.infcx.inner.borrow_mut();
+                let mut inner = self.infcx.inner;
                 let variable_table = &mut inner.const_unification_table();
                 let var_value = variable_table.probe_value(vid);
                 match var_value.val {
@@ -853,8 +846,8 @@ impl TypeRelation<'tcx> for ConstInferUnifier<'_, 'tcx> {
 
         match t.kind() {
             &ty::Infer(ty::TyVar(vid)) => {
-                let vid = self.infcx.inner.borrow_mut().type_variables().root_var(vid);
-                let probe = self.infcx.inner.borrow_mut().type_variables().probe(vid);
+                let vid = self.infcx.inner.type_variables().root_var(vid);
+                let probe = self.infcx.inner.type_variables().probe(vid);
                 match probe {
                     TypeVariableValue::Known { value: u } => {
                         debug!("ConstOccursChecker: known value {:?}", u);
@@ -866,8 +859,8 @@ impl TypeRelation<'tcx> for ConstInferUnifier<'_, 'tcx> {
                         }
 
                         let origin =
-                            *self.infcx.inner.borrow_mut().type_variables().var_origin(vid);
-                        let new_var_id = self.infcx.inner.borrow_mut().type_variables().new_var(
+                            *self.infcx.inner.type_variables().var_origin(vid);
+                        let new_var_id = self.infcx.inner.type_variables().new_var(
                             self.for_universe,
                             false,
                             origin,
@@ -931,7 +924,7 @@ impl TypeRelation<'tcx> for ConstInferUnifier<'_, 'tcx> {
 
         match c.val {
             ty::ConstKind::Infer(InferConst::Var(vid)) => {
-                let mut inner = self.infcx.inner.borrow_mut();
+                let mut inner = self.infcx.inner;
                 let variable_table = &mut inner.const_unification_table();
 
                 // Check if the current unification would end up
