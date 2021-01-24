@@ -158,7 +158,7 @@ impl<'a, 'tcx> OutlivesEnvironment<'tcx> {
     /// `RegionConstraintData`.)
     pub fn add_outlives_bounds<I>(
         &mut self,
-        infcx: Option<&mut InferCtxt<'a, 'tcx>>,
+        mut infcx: Option<&mut InferCtxt<'a, 'tcx>>,
         outlives_bounds: I,
     ) where
         I: IntoIterator<Item = OutlivesBound<'tcx>>,
