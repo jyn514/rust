@@ -637,7 +637,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         self.in_snapshot.get()
     }
 
-    pub fn freshen<T: TypeFoldable<'tcx>>(&self, t: T) -> T {
+    pub fn freshen<T: TypeFoldable<'tcx>>(&mut self, t: T) -> T {
         t.fold_with(&mut self.freshener())
     }
 
@@ -648,7 +648,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn freshener<'b>(&'b self) -> TypeFreshener<'b, 'tcx> {
+    pub fn freshener<'b>(&'b mut self) -> TypeFreshener<'b, 'a, 'tcx> {
         freshen::TypeFreshener::new(self)
     }
 

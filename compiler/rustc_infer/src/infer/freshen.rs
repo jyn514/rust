@@ -41,16 +41,16 @@ use std::collections::hash_map::Entry;
 use super::unify_key::ToType;
 use super::InferCtxt;
 
-pub struct TypeFreshener<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+pub struct TypeFreshener<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
     ty_freshen_count: u32,
     const_freshen_count: u32,
     ty_freshen_map: FxHashMap<ty::InferTy, Ty<'tcx>>,
     const_freshen_map: FxHashMap<ty::InferConst<'tcx>, &'tcx ty::Const<'tcx>>,
 }
 
-impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
-    pub fn new(infcx: &'a InferCtxt<'a, 'tcx>) -> TypeFreshener<'a, 'tcx> {
+impl<'a, 'cx, 'tcx> TypeFreshener<'a, 'cx, 'tcx> {
+    pub fn new(infcx: &'a mut InferCtxt<'cx, 'tcx>) -> Self {
         TypeFreshener {
             infcx,
             ty_freshen_count: 0,
@@ -112,7 +112,7 @@ impl<'a, 'tcx> TypeFreshener<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> TypeFolder<'tcx> for TypeFreshener<'a, 'tcx> {
+impl<'a, 'tcx> TypeFolder<'tcx> for TypeFreshener<'a, '_, 'tcx> {
     fn tcx<'b>(&'b self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }
@@ -150,25 +150,31 @@ impl<'a, 'tcx> TypeFolder<'tcx> for TypeFreshener<'a, 'tcx> {
                 self.freshen_ty(opt_ty, ty::TyVar(v), ty::FreshTy)
             }
 
-            ty::Infer(ty::IntVar(v)) => self.freshen_ty(
-                self.infcx
+            ty::Infer(ty::IntVar(v)) => {
+                let opt_ty = self.infcx
                     .inner
                     .int_unification_table()
                     .probe_value(v)
-                    .map(|v| v.to_type(tcx)),
-                ty::IntVar(v),
-                ty::FreshIntTy,
-            ),
+                    .map(|v| v.to_type(tcx));
+                self.freshen_ty(
+                    opt_ty,
+                    ty::IntVar(v),
+                    ty::FreshIntTy,
+                )
+            }
 
-            ty::Infer(ty::FloatVar(v)) => self.freshen_ty(
-                self.infcx
+            ty::Infer(ty::FloatVar(v)) => {
+                let opt_ty = self.infcx
                     .inner
                     .float_unification_table()
                     .probe_value(v)
-                    .map(|v| v.to_type(tcx)),
+                    .map(|v| v.to_type(tcx));
+                self.freshen_ty(
+                    opt_ty,
                 ty::FloatVar(v),
                 ty::FreshFloatTy,
-            ),
+                )
+            }
 
             ty::Infer(ty::FreshTy(ct) | ty::FreshIntTy(ct) | ty::FreshFloatTy(ct)) => {
                 if ct >= self.ty_freshen_count {
