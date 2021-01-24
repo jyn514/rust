@@ -30,6 +30,7 @@ use rustc_middle::ty::fold::{TypeFoldable, TypeVisitor};
 use rustc_middle::ty::relate::{self, Relate, RelateResult, TypeRelation};
 use rustc_middle::ty::{self, InferConst, Ty, TyCtxt};
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::ops::ControlFlow;
 
 #[derive(PartialEq)]
@@ -44,7 +45,7 @@ where
 {
     /// Callback to use when we deduce an outlives relationship
     delegate: D,
-    _infcx: std::marker::PhantomData<&'cx mut InferCtxt<'cx, 'tcx>>,
+    _infcx: PhantomData<&'cx mut InferCtxt<'cx, 'tcx>>,
 
     /// How are we relating `a` and `b`?
     ///
@@ -136,7 +137,7 @@ where
         delegate: D,
         ambient_variance: ty::Variance,
     ) -> Self {
-        Self { _infcx: std::marker::PhantomData, delegate, ambient_variance, a_scopes: vec![], b_scopes: vec![] }
+        Self { _infcx: PhantomData, delegate, ambient_variance, a_scopes: vec![], b_scopes: vec![] }
     }
 
     fn ambient_covariance(&self) -> bool {
@@ -355,15 +356,17 @@ where
         let universe = self.delegate.infcx().probe_ty_var(for_vid).unwrap_err();
 
         let mut generalizer = TypeGeneralizer {
-            infcx: self.delegate.infcx(),
-            delegate: &mut self.delegate,
+            _tcx: PhantomData,
+            delegate: self.delegate,
             first_free_index: ty::INNERMOST,
             ambient_variance: self.ambient_variance,
             for_vid_sub_root: self.delegate.infcx().inner.type_variables().sub_root_var(for_vid),
             universe,
         };
 
-        generalizer.relate(value, value)
+        let relation = generalizer.relate(value, value);
+        self.delegate = generalizer.delegate;
+        relation
     }
 }
 
@@ -786,13 +789,12 @@ impl<'me, 'tcx> TypeVisitor<'tcx> for ScopeInstantiator<'me, 'tcx> {
 /// scopes.
 ///
 /// [blog post]: https://is.gd/0hKvIr
-struct TypeGeneralizer<'me, 'tcx, D>
+struct TypeGeneralizer<'cx, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'me, 'tcx>,
+    D: TypeRelatingDelegate<'cx, 'tcx>,
 {
-    infcx: &'me InferCtxt<'me, 'tcx>,
-
-    delegate: &'me mut D,
+    _tcx: PhantomData<(&'cx (), &'tcx ())>,
+    delegate: D,
 
     /// After we generalize this type, we are going to relative it to
     /// some other type. What will be the variance at this point?
@@ -873,8 +875,7 @@ where
             }
 
             ty::Infer(ty::TyVar(vid)) => {
-                let mut inner = self.infcx.inner;
-                let variables = &mut inner.type_variables();
+                let variables = self.delegate.infcx().inner.type_variables();
                 let vid = variables.root_var(vid);
                 let sub_vid = variables.sub_root_var(vid);
                 if sub_vid == self.for_vid_sub_root {
@@ -976,8 +977,7 @@ where
                 bug!("unexpected inference variable encountered in NLL generalization: {:?}", a);
             }
             ty::ConstKind::Infer(InferConst::Var(vid)) => {
-                let mut inner = self.infcx.inner;
-                let variable_table = &mut inner.const_unification_table();
+                let mut variable_table = self.delegate.infcx().inner.const_unification_table();
                 let var_value = variable_table.probe_value(vid);
                 match var_value.val.known() {
                     Some(u) => self.relate(u, u),
