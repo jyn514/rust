@@ -570,7 +570,7 @@ impl<'tcx> InferCtxtBuilder<'tcx> {
     where
         T: TypeFoldable<'tcx>,
     {
-        self.enter(|infcx| {
+        self.enter(|mut infcx| {
             let (value, subst) =
                 infcx.instantiate_canonical_with_fresh_inference_vars(span, canonical);
             f(infcx, value, subst)

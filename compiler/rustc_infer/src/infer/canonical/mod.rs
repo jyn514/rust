@@ -51,7 +51,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// for each of the canonical inputs to your query.
 
     pub fn instantiate_canonical_with_fresh_inference_vars<T>(
-        &self,
+        &mut self,
         span: Span,
         canonical: &Canonical<'tcx, T>,
     ) -> (T, CanonicalVarValues<'tcx>)
@@ -80,7 +80,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// details). You can then use `substitute` to instantiate the
     /// canonical variable with these inference variables.
     fn instantiate_canonical_vars(
-        &self,
+        &mut self,
         span: Span,
         variables: &List<CanonicalVarInfo<'tcx>>,
         universe_map: impl Fn(ty::UniverseIndex) -> ty::UniverseIndex,
@@ -137,16 +137,18 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
                 self.tcx.mk_region(ty::RePlaceholder(placeholder_mapped)).into()
             }
 
-            CanonicalVarKind::Const(ui) => self
-                .next_const_var_in_universe(
-                    self.next_ty_var_in_universe(
-                        TypeVariableOrigin { kind: TypeVariableOriginKind::MiscVariable, span },
-                        universe_map(ui),
-                    ),
+            CanonicalVarKind::Const(ui) => {
+                let ty_var = self.next_ty_var_in_universe(
+                    TypeVariableOrigin { kind: TypeVariableOriginKind::MiscVariable, span },
+                    universe_map(ui),
+                );
+                self.next_const_var_in_universe(
+                    ty_var,
                     ConstVariableOrigin { kind: ConstVariableOriginKind::MiscVariable, span },
                     universe_map(ui),
                 )
-                .into(),
+                .into()
+            }
 
             CanonicalVarKind::PlaceholderConst(ty::PlaceholderConst { universe, name }) => {
                 let universe_mapped = universe_map(universe);

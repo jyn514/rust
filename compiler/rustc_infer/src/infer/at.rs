@@ -191,9 +191,9 @@ impl<'a, 'b, 'tcx> Trace<'a, 'b, 'tcx> {
         T: Relate<'tcx>,
     {
         debug!("sub({:?} <: {:?})", a, b);
-        let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|infcx, _| {
-            let mut fields = infcx.combine_fields(trace, at.param_env);
+        let Trace { at: At { param_env, infcx, .. }, trace, a_is_expected } = self;
+        infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, param_env);
             fields
                 .sub(a_is_expected)
                 .relate(a, b)
@@ -208,9 +208,9 @@ impl<'a, 'b, 'tcx> Trace<'a, 'b, 'tcx> {
         T: Relate<'tcx>,
     {
         debug!("eq({:?} == {:?})", a, b);
-        let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|infcx, _| {
-            let mut fields = infcx.combine_fields(trace, at.param_env);
+        let Trace { at: At { param_env, infcx, .. }, trace, a_is_expected } = self;
+        infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, param_env);
             fields
                 .equate(a_is_expected)
                 .relate(a, b)
@@ -223,9 +223,9 @@ impl<'a, 'b, 'tcx> Trace<'a, 'b, 'tcx> {
         T: Relate<'tcx>,
     {
         debug!("lub({:?} \\/ {:?})", a, b);
-        let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|infcx, _| {
-            let mut fields = infcx.combine_fields(trace, at.param_env);
+        let Trace { at: At { param_env, infcx, .. }, trace, a_is_expected } = self;
+        infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, param_env);
             fields
                 .lub(a_is_expected)
                 .relate(a, b)
@@ -238,9 +238,9 @@ impl<'a, 'b, 'tcx> Trace<'a, 'b, 'tcx> {
         T: Relate<'tcx>,
     {
         debug!("glb({:?} /\\ {:?})", a, b);
-        let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|infcx, _| {
-            let mut fields = infcx.combine_fields(trace, at.param_env);
+        let Trace { at: At { param_env, infcx, .. }, trace, a_is_expected } = self;
+        infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, param_env);
             fields
                 .glb(a_is_expected)
                 .relate(a, b)
