@@ -49,7 +49,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// - Finally, if any of the obligations result in a hard error,
     ///   then `Err(NoSolution)` is returned.
     pub fn make_canonicalized_query_response<T>(
-        &self,
+        &mut self,
         inference_vars: CanonicalVarValues<'tcx>,
         answer: T,
         fulfill_cx: &mut dyn TraitEngine<'tcx>,
@@ -94,7 +94,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// Helper for `make_canonicalized_query_response` that does
     /// everything up until the final canonicalization.
     fn make_query_response<T>(
-        &self,
+        &mut self,
         inference_vars: CanonicalVarValues<'tcx>,
         answer: T,
         fulfill_cx: &mut dyn TraitEngine<'tcx>,
@@ -156,7 +156,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     ///
     /// [c]: https://rust-lang.github.io/chalk/book/canonical_queries/canonicalization.html#processing-the-canonicalized-query-result
     pub fn instantiate_query_response_and_region_obligations<R>(
-        &self,
+        &mut self,
         cause: &ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
@@ -217,7 +217,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// - Finally, the query result (of type `R`) is propagated back,
     ///   after applying the substitution `S`.
     pub fn instantiate_nll_query_response_and_region_obligations<R>(
-        &self,
+        &mut self,
         cause: &ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
@@ -334,7 +334,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// assigned to a type variable is unified with an unnormalized
     /// projection.
     fn query_response_substitution<R>(
-        &self,
+        &mut self,
         cause: &ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
@@ -374,7 +374,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// variable instead. Therefore, the result of this method must be
     /// properly unified
     fn query_response_substitution_guess<R>(
-        &self,
+        &mut self,
         cause: &ObligationCause<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
         query_response: &Canonical<'tcx, QueryResponse<'tcx, R>>,
@@ -487,7 +487,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     ///
     /// See also: `query_response_substitution_guess`
     fn unify_query_response_substitution_guess<R>(
-        &self,
+        &mut self,
         cause: &ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
@@ -501,8 +501,9 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
         // canonical variable; this is taken from
         // `query_response.var_values` after applying the substitution
         // `result_subst`.
+        let tcx = self.tcx;
         let substituted_query_response = |index: BoundVar| -> GenericArg<'tcx> {
-            query_response.substitute_projected(self.tcx, &result_subst, |v| v.var_values[index])
+            query_response.substitute_projected(tcx, &result_subst, |v| v.var_values[index])
         };
 
         // Unify the original value for each variable with the value
@@ -550,13 +551,13 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// Given two sets of values for the same set of canonical variables, unify them.
     /// The second set is produced lazily by supplying indices from the first set.
     fn unify_canonical_vars(
-        &self,
+        &mut self,
         cause: &ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         variables1: &OriginalQueryValues<'tcx>,
         variables2: impl Fn(BoundVar) -> GenericArg<'tcx>,
     ) -> InferResult<'tcx, ()> {
-        self.commit_if_ok(|_| {
+        self.commit_if_ok(|this, _| {
             let mut obligations = vec![];
             for (index, value1) in variables1.var_values.iter().enumerate() {
                 let value2 = variables2(BoundVar::new(index));
@@ -564,7 +565,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
                 match (value1.unpack(), value2.unpack()) {
                     (GenericArgKind::Type(v1), GenericArgKind::Type(v2)) => {
                         obligations
-                            .extend(self.at(cause, param_env).eq(v1, v2)?.into_obligations());
+                            .extend(this.at(cause, param_env).eq(v1, v2)?.into_obligations());
                     }
                     (
                         GenericArgKind::Lifetime(ty::ReErased),
@@ -574,10 +575,10 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
                     }
                     (GenericArgKind::Lifetime(v1), GenericArgKind::Lifetime(v2)) => {
                         obligations
-                            .extend(self.at(cause, param_env).eq(v1, v2)?.into_obligations());
+                            .extend(this.at(cause, param_env).eq(v1, v2)?.into_obligations());
                     }
                     (GenericArgKind::Const(v1), GenericArgKind::Const(v2)) => {
-                        let ok = self.at(cause, param_env).eq(v1, v2)?;
+                        let ok = this.at(cause, param_env).eq(v1, v2)?;
                         obligations.extend(ok.into_obligations());
                     }
                     _ => {

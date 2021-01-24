@@ -30,17 +30,17 @@ impl<'a, 'tcx> CombineFields<'a, 'tcx> {
 
         let span = self.trace.cause.span;
 
-        self.infcx.commit_if_ok(|_| {
+        self.infcx.commit_if_ok(|infcx, _| {
             // First, we instantiate each bound region in the supertype with a
             // fresh placeholder region.
-            let b_prime = self.infcx.replace_bound_vars_with_placeholders(b);
+            let b_prime = infcx.replace_bound_vars_with_placeholders(b);
 
             // Next, we instantiate each bound region in the subtype
             // with a fresh region variable. These region variables --
             // but no other pre-existing region variables -- can name
             // the placeholders.
             let (a_prime, _) =
-                self.infcx.replace_bound_vars_with_fresh_vars(span, HigherRankedType, a);
+                infcx.replace_bound_vars_with_fresh_vars(span, HigherRankedType, a);
 
             debug!("a_prime={:?}", a_prime);
             debug!("b_prime={:?}", b_prime);

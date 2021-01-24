@@ -102,10 +102,10 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         debug!("fudge_inference_if_ok()");
 
         let variable_lengths = self.variable_lengths();
-        let (mut fudger, value) = self.probe(|_| {
+        let (mut fudger, value) = self.probe(|this, _| {
             match f() {
                 Ok(value) => {
-                    let value = self.resolve_vars_if_possible(value);
+                    let value = this.resolve_vars_if_possible(value);
 
                     // At this point, `value` could in principle refer
                     // to inference variables that have been created during
@@ -113,7 +113,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
                     // going to be popped, so we will have to
                     // eliminate any references to them.
 
-                    let mut inner = self.inner;
+                    let mut inner = this.inner;
                     let type_vars =
                         inner.type_variables().vars_since_snapshot(variable_lengths.type_var_len);
                     let int_vars = vars_since_snapshot(

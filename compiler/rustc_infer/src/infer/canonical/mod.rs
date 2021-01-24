@@ -98,7 +98,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// variable, then you'll get a new inference variable; if it is a
     /// universally quantified variable, you get a placeholder.
     fn instantiate_canonical_var(
-        &self,
+        &mut self,
         span: Span,
         cv_info: CanonicalVarInfo<'tcx>,
         universe_map: impl Fn(ty::UniverseIndex) -> ty::UniverseIndex,

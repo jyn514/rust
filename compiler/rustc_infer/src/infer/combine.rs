@@ -63,7 +63,7 @@ pub enum RelationDir {
 
 impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
     pub fn super_combine_tys<R>(
-        &self,
+        &mut self,
         relation: &mut R,
         a: Ty<'tcx>,
         b: Ty<'tcx>,
@@ -120,7 +120,7 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
     }
 
     pub fn super_combine_consts<R>(
-        &self,
+        &mut self,
         relation: &mut R,
         a: &'tcx ty::Const<'tcx>,
         b: &'tcx ty::Const<'tcx>,
@@ -220,15 +220,14 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
     ///
     /// See `src/test/ui/const-generics/occurs-check/` for more examples where this is relevant.
     fn unify_const_variable(
-        &self,
+        &mut self,
         param_env: ty::ParamEnv<'tcx>,
         target_vid: ty::ConstVid<'tcx>,
         ct: &'tcx ty::Const<'tcx>,
         vid_is_expected: bool,
     ) -> RelateResult<'tcx, &'tcx ty::Const<'tcx>> {
         let (for_universe, span) = {
-            let mut inner = self.inner;
-            let variable_table = &mut inner.const_unification_table();
+            let variable_table = &mut self.inner.const_unification_table();
             let var_value = variable_table.probe_value(target_vid);
             match var_value.val {
                 ConstVariableValue::Known { value } => {

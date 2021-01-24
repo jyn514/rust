@@ -192,8 +192,8 @@ impl<'a, 'tcx> Trace<'a, 'tcx> {
     {
         debug!("sub({:?} <: {:?})", a, b);
         let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|_| {
-            let mut fields = at.infcx.combine_fields(trace, at.param_env);
+        at.infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, at.param_env);
             fields
                 .sub(a_is_expected)
                 .relate(a, b)
@@ -209,8 +209,8 @@ impl<'a, 'tcx> Trace<'a, 'tcx> {
     {
         debug!("eq({:?} == {:?})", a, b);
         let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|_| {
-            let mut fields = at.infcx.combine_fields(trace, at.param_env);
+        at.infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, at.param_env);
             fields
                 .equate(a_is_expected)
                 .relate(a, b)
@@ -224,8 +224,8 @@ impl<'a, 'tcx> Trace<'a, 'tcx> {
     {
         debug!("lub({:?} \\/ {:?})", a, b);
         let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|_| {
-            let mut fields = at.infcx.combine_fields(trace, at.param_env);
+        at.infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, at.param_env);
             fields
                 .lub(a_is_expected)
                 .relate(a, b)
@@ -239,8 +239,8 @@ impl<'a, 'tcx> Trace<'a, 'tcx> {
     {
         debug!("glb({:?} /\\ {:?})", a, b);
         let Trace { at, trace, a_is_expected } = self;
-        at.infcx.commit_if_ok(|_| {
-            let mut fields = at.infcx.combine_fields(trace, at.param_env);
+        at.infcx.commit_if_ok(|infcx, _| {
+            let mut fields = infcx.combine_fields(trace, at.param_env);
             fields
                 .glb(a_is_expected)
                 .relate(a, b)
