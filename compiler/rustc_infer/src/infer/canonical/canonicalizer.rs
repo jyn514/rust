@@ -37,7 +37,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     ///
     /// [c]: https://rust-lang.github.io/chalk/book/canonical_queries/canonicalization.html#canonicalizing-the-query
     pub fn canonicalize_query<V>(
-        &self,
+        &mut self,
         value: V,
         query_state: &mut OriginalQueryValues<'tcx>,
     ) -> Canonicalized<'tcx, V>
@@ -80,7 +80,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// out the [chapter in the rustc dev guide][c].
     ///
     /// [c]: https://rust-lang.github.io/chalk/book/canonical_queries/canonicalization.html#canonicalizing-the-query-result
-    pub fn canonicalize_response<V>(&self, value: V) -> Canonicalized<'tcx, V>
+    pub fn canonicalize_response<V>(&mut self, value: V) -> Canonicalized<'tcx, V>
     where
         V: TypeFoldable<'tcx>,
     {
@@ -94,7 +94,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
         )
     }
 
-    pub fn canonicalize_user_type_annotation<V>(&self, value: V) -> Canonicalized<'tcx, V>
+    pub fn canonicalize_user_type_annotation<V>(&mut self, value: V) -> Canonicalized<'tcx, V>
     where
         V: TypeFoldable<'tcx>,
     {
@@ -122,7 +122,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     // FIXME(#48536): once the above issues are resolved, we can remove this
     // and just use `canonicalize_query`.
     pub fn canonicalize_hr_query_hack<V>(
-        &self,
+        &mut self,
         value: V,
         query_state: &mut OriginalQueryValues<'tcx>,
     ) -> Canonicalized<'tcx, V>
@@ -151,7 +151,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
 trait CanonicalizeRegionMode {
     fn canonicalize_free_region(
         &self,
-        canonicalizer: &mut Canonicalizer<'_, 'tcx>,
+        canonicalizer: &mut Canonicalizer<'_, '_, 'tcx>,
         r: ty::Region<'tcx>,
     ) -> ty::Region<'tcx>;
 
@@ -163,7 +163,7 @@ struct CanonicalizeQueryResponse;
 impl CanonicalizeRegionMode for CanonicalizeQueryResponse {
     fn canonicalize_free_region(
         &self,
-        canonicalizer: &mut Canonicalizer<'_, 'tcx>,
+        canonicalizer: &mut Canonicalizer<'_, '_, 'tcx>,
         r: ty::Region<'tcx>,
     ) -> ty::Region<'tcx> {
         match r {
@@ -220,7 +220,7 @@ struct CanonicalizeUserTypeAnnotation;
 impl CanonicalizeRegionMode for CanonicalizeUserTypeAnnotation {
     fn canonicalize_free_region(
         &self,
-        canonicalizer: &mut Canonicalizer<'_, 'tcx>,
+        canonicalizer: &mut Canonicalizer<'_, '_, 'tcx>,
         r: ty::Region<'tcx>,
     ) -> ty::Region<'tcx> {
         match r {
@@ -243,7 +243,7 @@ struct CanonicalizeAllFreeRegions;
 impl CanonicalizeRegionMode for CanonicalizeAllFreeRegions {
     fn canonicalize_free_region(
         &self,
-        canonicalizer: &mut Canonicalizer<'_, 'tcx>,
+        canonicalizer: &mut Canonicalizer<'_, '_, 'tcx>,
         r: ty::Region<'tcx>,
     ) -> ty::Region<'tcx> {
         canonicalizer.canonical_var_for_region_in_root_universe(r)
@@ -259,7 +259,7 @@ struct CanonicalizeFreeRegionsOtherThanStatic;
 impl CanonicalizeRegionMode for CanonicalizeFreeRegionsOtherThanStatic {
     fn canonicalize_free_region(
         &self,
-        canonicalizer: &mut Canonicalizer<'_, 'tcx>,
+        canonicalizer: &mut Canonicalizer<'_, '_, 'tcx>,
         r: ty::Region<'tcx>,
     ) -> ty::Region<'tcx> {
         if let ty::ReStatic = r {
@@ -274,21 +274,21 @@ impl CanonicalizeRegionMode for CanonicalizeFreeRegionsOtherThanStatic {
     }
 }
 
-struct Canonicalizer<'cx, 'tcx> {
-    infcx: Option<&'cx InferCtxt<'cx, 'tcx>>,
+struct Canonicalizer<'a, 'cx, 'tcx> {
+    infcx: Option<&'a mut InferCtxt<'cx, 'tcx>>,
     tcx: TyCtxt<'tcx>,
     variables: SmallVec<[CanonicalVarInfo<'tcx>; 8]>,
-    query_state: &'cx mut OriginalQueryValues<'tcx>,
+    query_state: &'a mut OriginalQueryValues<'tcx>,
     // Note that indices is only used once `var_values` is big enough to be
     // heap-allocated.
     indices: FxHashMap<GenericArg<'tcx>, BoundVar>,
-    canonicalize_region_mode: &'cx dyn CanonicalizeRegionMode,
+    canonicalize_region_mode: &'a dyn CanonicalizeRegionMode,
     needs_canonical_flags: TypeFlags,
 
     binder_index: ty::DebruijnIndex,
 }
 
-impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'cx, 'tcx> {
+impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'_, 'cx, 'tcx> {
     fn tcx<'b>(&'b self) -> TyCtxt<'tcx> {
         self.tcx
     }
@@ -474,15 +474,15 @@ impl<'cx, 'tcx> TypeFolder<'tcx> for Canonicalizer<'cx, 'tcx> {
     }
 }
 
-impl<'cx, 'tcx> Canonicalizer<'cx, 'tcx> {
+impl<'cx, 'tcx> Canonicalizer<'_, 'cx, 'tcx> {
     /// The main `canonicalize` method, shared impl of
     /// `canonicalize_query` and `canonicalize_response`.
-    fn canonicalize<V>(
+    fn canonicalize<'a, V>(
         value: V,
-        infcx: Option<&InferCtxt<'_, 'tcx>>,
+        infcx: Option<&'a mut InferCtxt<'_, 'tcx>>,
         tcx: TyCtxt<'tcx>,
         canonicalize_region_mode: &dyn CanonicalizeRegionMode,
-        query_state: &mut OriginalQueryValues<'tcx>,
+        query_state: &'a mut OriginalQueryValues<'tcx>,
     ) -> Canonicalized<'tcx, V>
     where
         V: TypeFoldable<'tcx>,
