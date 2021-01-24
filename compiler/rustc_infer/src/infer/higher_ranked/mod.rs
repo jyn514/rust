@@ -123,7 +123,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
 
     /// See `infer::region_constraints::RegionConstraintCollector::leak_check`.
     pub fn leak_check(
-        &self,
+        &mut self,
         overly_polymorphic: bool,
         snapshot: &CombinedSnapshot<'_, 'tcx>,
     ) -> RelateResult<'tcx, ()> {
@@ -137,10 +137,11 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
             return Ok(());
         }
 
+        let universe = self.universe();
         self.inner.unwrap_region_constraints().leak_check(
             self.tcx,
             overly_polymorphic,
-            self.universe(),
+            universe,
             snapshot,
         )
     }

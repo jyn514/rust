@@ -166,8 +166,8 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     }
 }
 
-pub struct InferenceFudger<'a, 'tcx> {
-    infcx: &'a InferCtxt<'a, 'tcx>,
+pub struct InferenceFudger<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
     type_vars: (Range<TyVid>, Vec<TypeVariableOrigin>),
     int_vars: Range<IntVid>,
     float_vars: Range<FloatVid>,
@@ -175,7 +175,7 @@ pub struct InferenceFudger<'a, 'tcx> {
     const_vars: (Range<ConstVid<'tcx>>, Vec<ConstVariableOrigin>),
 }
 
-impl<'a, 'tcx> TypeFolder<'tcx> for InferenceFudger<'a, 'tcx> {
+impl<'a, 'tcx> TypeFolder<'tcx> for InferenceFudger<'a, '_, 'tcx> {
     fn tcx<'b>(&'b self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }

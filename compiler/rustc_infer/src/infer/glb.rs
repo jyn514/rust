@@ -66,9 +66,10 @@ impl TypeRelation<'tcx> for Glb<'_, 'combine, 'infcx, 'tcx> {
     ) -> RelateResult<'tcx, ty::Region<'tcx>> {
         debug!("{}.regions({:?}, {:?})", self.tag(), a, b);
 
+        let tcx = self.tcx();
         let origin = Subtype(box self.fields.trace.clone());
         Ok(self.fields.infcx.inner.unwrap_region_constraints().glb_regions(
-            self.tcx(),
+            tcx,
             origin,
             a,
             b,
@@ -102,7 +103,7 @@ impl TypeRelation<'tcx> for Glb<'_, 'combine, 'infcx, 'tcx> {
 }
 
 impl<'combine, 'infcx, 'tcx> LatticeDir<'infcx, 'tcx> for Glb<'_, 'combine, 'infcx, 'tcx> {
-    fn infcx(&self) -> &InferCtxt<'infcx, 'tcx> {
+    fn infcx(&mut self) -> &mut InferCtxt<'infcx, 'tcx> {
         self.fields.infcx
     }
 

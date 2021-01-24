@@ -28,7 +28,7 @@ use rustc_middle::ty::TyVar;
 use rustc_middle::ty::{self, Ty};
 
 pub trait LatticeDir<'f, 'tcx>: TypeRelation<'tcx> {
-    fn infcx(&self) -> &InferCtxt<'f, 'tcx>;
+    fn infcx(&mut self) -> &mut InferCtxt<'f, 'tcx>;
 
     fn cause(&self) -> &ObligationCause<'tcx>;
 
