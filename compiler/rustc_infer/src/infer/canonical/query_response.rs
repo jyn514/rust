@@ -638,7 +638,7 @@ struct QueryTypeRelatingDelegate<'a, 'cx, 'tcx> {
 }
 
 impl<'a, 'cx, 'tcx> TypeRelatingDelegate<'cx, 'tcx> for QueryTypeRelatingDelegate<'a, 'cx, 'tcx> {
-    fn infcx(&self) -> &mut InferCtxt<'cx, 'tcx> {
+    fn infcx(&mut self) -> &mut InferCtxt<'cx, 'tcx> {
         self.infcx
     }
 

@@ -72,7 +72,7 @@ where
 }
 
 pub trait TypeRelatingDelegate<'cx, 'tcx> {
-    fn infcx(&self) -> &mut InferCtxt<'cx, 'tcx>;
+    fn infcx(&mut self) -> &mut InferCtxt<'cx, 'tcx>;
 
     /// Push a constraint `sup: sub` -- this constraint must be
     /// satisfied for the two types to be related. `sub` and `sup` may
