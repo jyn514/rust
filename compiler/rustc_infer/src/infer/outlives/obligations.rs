@@ -146,7 +146,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// returns an `InferOk` with subobligations that must be
     /// processed.
     pub fn process_registered_region_obligations(
-        &self,
+        &mut self,
         region_bound_pairs_map: &FxHashMap<hir::HirId, RegionBoundPairs<'tcx>>,
         implicit_region_bound: Option<ty::Region<'tcx>>,
         param_env: ty::ParamEnv<'tcx>,
@@ -159,6 +159,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
         debug!("process_registered_region_obligations()");
 
         let my_region_obligations = self.take_registered_region_obligations();
+        let tcx = self.tcx;
 
         for (body_id, RegionObligation { sup_type, sub_region, origin }) in my_region_obligations {
             debug!(
@@ -170,15 +171,15 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
 
             if let Some(region_bound_pairs) = region_bound_pairs_map.get(&body_id) {
                 let outlives = &mut TypeOutlives::new(
-                    self,
-                    self.tcx,
+                    &mut *self,
+                    tcx,
                     &region_bound_pairs,
                     implicit_region_bound,
                     param_env,
                 );
                 outlives.type_must_outlive(origin, sup_type, sub_region);
             } else {
-                self.tcx.sess.delay_span_bug(
+                tcx.sess.delay_span_bug(
                     origin.span(),
                     &format!("no region-bound-pairs for {:?}", body_id),
                 )
@@ -189,7 +190,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// Processes a single ad-hoc region obligation that was not
     /// registered in advance.
     pub fn type_must_outlive(
-        &self,
+        &mut self,
         region_bound_pairs: &RegionBoundPairs<'tcx>,
         implicit_region_bound: Option<ty::Region<'tcx>>,
         param_env: ty::ParamEnv<'tcx>,
@@ -197,14 +198,15 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
         ty: Ty<'tcx>,
         region: ty::Region<'tcx>,
     ) {
+        let tcx = self.tcx;
+        let ty = self.resolve_vars_if_possible(ty);
         let outlives = &mut TypeOutlives::new(
             self,
-            self.tcx,
+            tcx,
             region_bound_pairs,
             implicit_region_bound,
             param_env,
         );
-        let ty = self.resolve_vars_if_possible(ty);
         outlives.type_must_outlive(origin, ty, region);
     }
 }
@@ -460,7 +462,7 @@ where
     }
 }
 
-impl<'cx, 'tcx> TypeOutlivesDelegate<'tcx> for &'cx InferCtxt<'cx, 'tcx> {
+impl<'a, 'cx, 'tcx> TypeOutlivesDelegate<'tcx> for &'a mut InferCtxt<'cx, 'tcx> {
     fn push_sub_region_constraint(
         &mut self,
         origin: SubregionOrigin<'tcx>,
