@@ -10,16 +10,16 @@ use rustc_middle::ty::{self, ToPredicate, Ty, TyCtxt};
 use std::mem;
 
 /// Ensures `a` is made a subtype of `b`. Returns `a` on success.
-pub struct Sub<'combine, 'infcx, 'tcx> {
-    fields: &'combine mut CombineFields<'infcx, 'tcx>,
+pub struct Sub<'combine_borrow, 'combine, 'infcx, 'tcx> {
+    fields: &'combine_borrow mut CombineFields<'combine, 'infcx, 'tcx>,
     a_is_expected: bool,
 }
 
-impl<'combine, 'infcx, 'tcx> Sub<'combine, 'infcx, 'tcx> {
+impl<'combine_borrow, 'combine, 'infcx, 'tcx> Sub<'combine_borrow, 'combine, 'infcx, 'tcx> {
     pub fn new(
-        f: &'combine mut CombineFields<'infcx, 'tcx>,
+        f: &'combine_borrow mut CombineFields<'combine, 'infcx, 'tcx>,
         a_is_expected: bool,
-    ) -> Sub<'combine, 'infcx, 'tcx> {
+    ) -> Sub<'combine_borrow, 'combine, 'infcx, 'tcx> {
         Sub { fields: f, a_is_expected }
     }
 
@@ -31,7 +31,7 @@ impl<'combine, 'infcx, 'tcx> Sub<'combine, 'infcx, 'tcx> {
     }
 }
 
-impl TypeRelation<'tcx> for Sub<'combine, 'infcx, 'tcx> {
+impl TypeRelation<'tcx> for Sub<'_, 'combine, 'infcx, 'tcx> {
     fn tag(&self) -> &'static str {
         "Sub"
     }
@@ -171,7 +171,7 @@ impl TypeRelation<'tcx> for Sub<'combine, 'infcx, 'tcx> {
     }
 }
 
-impl<'tcx> ConstEquateRelation<'tcx> for Sub<'_, '_, 'tcx> {
+impl<'tcx> ConstEquateRelation<'tcx> for Sub<'_, '_, '_, 'tcx> {
     fn const_equate_obligation(&mut self, a: &'tcx ty::Const<'tcx>, b: &'tcx ty::Const<'tcx>) {
         self.fields.add_const_equate_obligation(self.a_is_expected, a, b);
     }

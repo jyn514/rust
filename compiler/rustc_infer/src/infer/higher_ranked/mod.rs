@@ -8,7 +8,7 @@ use crate::infer::CombinedSnapshot;
 use rustc_middle::ty::relate::{Relate, RelateResult, TypeRelation};
 use rustc_middle::ty::{self, Binder, TypeFoldable};
 
-impl<'a, 'tcx> CombineFields<'a, 'tcx> {
+impl<'a, 'tcx> CombineFields<'_, 'a, 'tcx> {
     pub fn higher_ranked_sub<T>(
         &mut self,
         a: Binder<T>,

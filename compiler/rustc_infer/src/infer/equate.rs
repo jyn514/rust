@@ -9,21 +9,22 @@ use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_hir::def_id::DefId;
 
 /// Ensures `a` is made equal to `b`. Returns `a` on success.
-pub struct Equate<'combine, 'infcx, 'tcx> {
-    fields: &'combine mut CombineFields<'infcx, 'tcx>,
+pub struct Equate<'s, 'combine, 'infcx, 'tcx> {
+    // TODO: 'combine looks wrong
+    fields: &'s mut CombineFields<'combine, 'infcx, 'tcx>,
     a_is_expected: bool,
 }
 
-impl<'combine, 'infcx, 'tcx> Equate<'combine, 'infcx, 'tcx> {
+impl<'s, 'combine, 'infcx, 'tcx> Equate<'s, 'combine, 'infcx, 'tcx> {
     pub fn new(
-        fields: &'combine mut CombineFields<'infcx, 'tcx>,
+        fields: &'s mut CombineFields<'combine, 'infcx, 'tcx>,
         a_is_expected: bool,
-    ) -> Equate<'combine, 'infcx, 'tcx> {
+    ) -> Self {
         Equate { fields, a_is_expected }
     }
 }
 
-impl TypeRelation<'tcx> for Equate<'combine, 'infcx, 'tcx> {
+impl TypeRelation<'tcx> for Equate<'_, 'combine, 'infcx, 'tcx> {
     fn tag(&self) -> &'static str {
         "Equate"
     }
@@ -140,7 +141,7 @@ impl TypeRelation<'tcx> for Equate<'combine, 'infcx, 'tcx> {
     }
 }
 
-impl<'tcx> ConstEquateRelation<'tcx> for Equate<'_, '_, 'tcx> {
+impl<'tcx> ConstEquateRelation<'tcx> for Equate<'_, '_, '_, 'tcx> {
     fn const_equate_obligation(&mut self, a: &'tcx ty::Const<'tcx>, b: &'tcx ty::Const<'tcx>) {
         self.fields.add_const_equate_obligation(self.a_is_expected, a, b);
     }

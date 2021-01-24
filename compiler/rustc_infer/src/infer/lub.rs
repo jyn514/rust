@@ -9,21 +9,21 @@ use rustc_middle::ty::relate::{Relate, RelateResult, TypeRelation};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
 /// "Least upper bound" (common supertype)
-pub struct Lub<'combine, 'infcx, 'tcx> {
-    fields: &'combine mut CombineFields<'infcx, 'tcx>,
+pub struct Lub<'combine_borrow, 'combine, 'infcx, 'tcx> {
+    fields: &'combine_borrow mut CombineFields<'combine, 'infcx, 'tcx>,
     a_is_expected: bool,
 }
 
-impl<'combine, 'infcx, 'tcx> Lub<'combine, 'infcx, 'tcx> {
+impl<'combine_borrow, 'combine, 'infcx, 'tcx> Lub<'combine_borrow, 'combine, 'infcx, 'tcx> {
     pub fn new(
-        fields: &'combine mut CombineFields<'infcx, 'tcx>,
+        fields: &'combine_borrow mut CombineFields<'combine, 'infcx, 'tcx>,
         a_is_expected: bool,
-    ) -> Lub<'combine, 'infcx, 'tcx> {
+    ) -> Lub<'combine_borrow, 'combine, 'infcx, 'tcx> {
         Lub { fields, a_is_expected }
     }
 }
 
-impl TypeRelation<'tcx> for Lub<'combine, 'infcx, 'tcx> {
+impl TypeRelation<'tcx> for Lub<'_, 'combine, 'infcx, 'tcx> {
     fn tag(&self) -> &'static str {
         "Lub"
     }
@@ -101,14 +101,14 @@ impl TypeRelation<'tcx> for Lub<'combine, 'infcx, 'tcx> {
     }
 }
 
-impl<'tcx> ConstEquateRelation<'tcx> for Lub<'_, '_, 'tcx> {
+impl<'tcx> ConstEquateRelation<'tcx> for Lub<'_, '_, '_, 'tcx> {
     fn const_equate_obligation(&mut self, a: &'tcx ty::Const<'tcx>, b: &'tcx ty::Const<'tcx>) {
         self.fields.add_const_equate_obligation(self.a_is_expected, a, b);
     }
 }
 
-impl<'combine, 'infcx, 'tcx> LatticeDir<'infcx, 'tcx> for Lub<'combine, 'infcx, 'tcx> {
-    fn infcx(&self) -> &'infcx InferCtxt<'infcx, 'tcx> {
+impl<'combine, 'infcx, 'tcx> LatticeDir<'infcx, 'tcx> for Lub<'_, 'combine, 'infcx, 'tcx> {
+    fn infcx(&self) -> &InferCtxt<'infcx, 'tcx> {
         self.fields.infcx
     }
 

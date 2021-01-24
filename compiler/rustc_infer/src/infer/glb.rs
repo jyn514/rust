@@ -9,21 +9,21 @@ use rustc_middle::ty::relate::{Relate, RelateResult, TypeRelation};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 
 /// "Greatest lower bound" (common subtype)
-pub struct Glb<'combine, 'infcx, 'tcx> {
-    fields: &'combine mut CombineFields<'infcx, 'tcx>,
+pub struct Glb<'combine_borrow, 'combine, 'infcx, 'tcx> {
+    fields: &'combine_borrow mut CombineFields<'combine, 'infcx, 'tcx>,
     a_is_expected: bool,
 }
 
-impl<'combine, 'infcx, 'tcx> Glb<'combine, 'infcx, 'tcx> {
+impl<'combine_borrow, 'combine, 'infcx, 'tcx> Glb<'combine_borrow, 'combine, 'infcx, 'tcx> {
     pub fn new(
-        fields: &'combine mut CombineFields<'infcx, 'tcx>,
+        fields: &'combine_borrow mut CombineFields<'combine, 'infcx, 'tcx>,
         a_is_expected: bool,
-    ) -> Glb<'combine, 'infcx, 'tcx> {
+    ) -> Glb<'combine_borrow, 'combine, 'infcx, 'tcx> {
         Glb { fields, a_is_expected }
     }
 }
 
-impl TypeRelation<'tcx> for Glb<'combine, 'infcx, 'tcx> {
+impl TypeRelation<'tcx> for Glb<'_, 'combine, 'infcx, 'tcx> {
     fn tag(&self) -> &'static str {
         "Glb"
     }
@@ -101,8 +101,8 @@ impl TypeRelation<'tcx> for Glb<'combine, 'infcx, 'tcx> {
     }
 }
 
-impl<'combine, 'infcx, 'tcx> LatticeDir<'infcx, 'tcx> for Glb<'combine, 'infcx, 'tcx> {
-    fn infcx(&self) -> &'infcx InferCtxt<'infcx, 'tcx> {
+impl<'combine, 'infcx, 'tcx> LatticeDir<'infcx, 'tcx> for Glb<'_, 'combine, 'infcx, 'tcx> {
+    fn infcx(&self) -> &InferCtxt<'infcx, 'tcx> {
         self.fields.infcx
     }
 
@@ -118,7 +118,7 @@ impl<'combine, 'infcx, 'tcx> LatticeDir<'infcx, 'tcx> for Glb<'combine, 'infcx, 
     }
 }
 
-impl<'tcx> ConstEquateRelation<'tcx> for Glb<'_, '_, 'tcx> {
+impl<'tcx> ConstEquateRelation<'tcx> for Glb<'_, '_, '_, 'tcx> {
     fn const_equate_obligation(&mut self, a: &'tcx ty::Const<'tcx>, b: &'tcx ty::Const<'tcx>) {
         self.fields.add_const_equate_obligation(self.a_is_expected, a, b);
     }

@@ -157,7 +157,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// [c]: https://rust-lang.github.io/chalk/book/canonical_queries/canonicalization.html#processing-the-canonicalized-query-result
     pub fn instantiate_query_response_and_region_obligations<R>(
         &mut self,
-        cause: &ObligationCause<'tcx>,
+        cause: &'cx ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
         query_response: &Canonical<'tcx, QueryResponse<'tcx, R>>,
@@ -335,7 +335,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// projection.
     fn query_response_substitution<R>(
         &mut self,
-        cause: &ObligationCause<'tcx>,
+        cause: &'cx ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
         query_response: &Canonical<'tcx, QueryResponse<'tcx, R>>,
@@ -488,7 +488,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// See also: `query_response_substitution_guess`
     fn unify_query_response_substitution_guess<R>(
         &mut self,
-        cause: &ObligationCause<'tcx>,
+        cause: &'cx ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         original_values: &OriginalQueryValues<'tcx>,
         result_subst: &CanonicalVarValues<'tcx>,
@@ -552,7 +552,7 @@ impl<'cx, 'tcx> InferCtxt<'cx, 'tcx> {
     /// The second set is produced lazily by supplying indices from the first set.
     fn unify_canonical_vars(
         &mut self,
-        cause: &ObligationCause<'tcx>,
+        cause: &'cx ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         variables1: &OriginalQueryValues<'tcx>,
         variables2: impl Fn(BoundVar) -> GenericArg<'tcx>,

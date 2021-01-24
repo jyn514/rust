@@ -45,9 +45,8 @@ use rustc_middle::ty::{self, InferConst, ToPredicate, Ty, TyCtxt, TypeFoldable};
 use rustc_middle::ty::{IntType, UintType};
 use rustc_span::{Span, DUMMY_SP};
 
-#[derive(Clone)]
-pub struct CombineFields<'infcx, 'tcx> {
-    pub infcx: &'infcx InferCtxt<'infcx, 'tcx>,
+pub struct CombineFields<'a, 'infcx, 'tcx> {
+    pub infcx: &'a mut InferCtxt<'infcx, 'tcx>,
     pub trace: TypeTrace<'tcx>,
     pub cause: Option<ty::relate::Cause>,
     pub param_env: ty::ParamEnv<'tcx>,
@@ -285,24 +284,24 @@ impl<'infcx, 'tcx> InferCtxt<'infcx, 'tcx> {
     }
 }
 
-impl<'infcx, 'tcx> CombineFields<'infcx, 'tcx> {
+impl<'infcx_borrow, 'infcx, 'tcx> CombineFields<'infcx_borrow, 'infcx, 'tcx> {
     pub fn tcx(&self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }
 
-    pub fn equate<'a>(&'a mut self, a_is_expected: bool) -> Equate<'a, 'infcx, 'tcx> {
+    pub fn equate<'a>(&'a mut self, a_is_expected: bool) -> Equate<'a, 'infcx_borrow, 'infcx, 'tcx> {
         Equate::new(self, a_is_expected)
     }
 
-    pub fn sub<'a>(&'a mut self, a_is_expected: bool) -> Sub<'a, 'infcx, 'tcx> {
+    pub fn sub<'a>(&'a mut self, a_is_expected: bool) -> Sub<'a, 'infcx_borrow, 'infcx, 'tcx> {
         Sub::new(self, a_is_expected)
     }
 
-    pub fn lub<'a>(&'a mut self, a_is_expected: bool) -> Lub<'a, 'infcx, 'tcx> {
+    pub fn lub<'a>(&'a mut self, a_is_expected: bool) -> Lub<'a, 'infcx_borrow, 'infcx, 'tcx> {
         Lub::new(self, a_is_expected)
     }
 
-    pub fn glb<'a>(&'a mut self, a_is_expected: bool) -> Glb<'a, 'infcx, 'tcx> {
+    pub fn glb<'a>(&'a mut self, a_is_expected: bool) -> Glb<'a, 'infcx_borrow, 'infcx, 'tcx> {
         Glb::new(self, a_is_expected)
     }
 
@@ -456,11 +455,11 @@ impl<'infcx, 'tcx> CombineFields<'infcx, 'tcx> {
     }
 }
 
-struct Generalizer<'cx, 'tcx> {
-    infcx: &'cx InferCtxt<'cx, 'tcx>,
+struct Generalizer<'a, 'cx, 'tcx> {
+    infcx: &'a mut InferCtxt<'cx, 'tcx>,
 
     /// The span, used when creating new type variables and things.
-    cause: &'cx ObligationCause<'tcx>,
+    cause: &'a ObligationCause<'tcx>,
 
     /// The vid of the type variable that is in the process of being
     /// instantiated; if we find this within the type we are folding,
@@ -520,7 +519,7 @@ struct Generalization<'tcx> {
     needs_wf: bool,
 }
 
-impl TypeRelation<'tcx> for Generalizer<'_, 'tcx> {
+impl TypeRelation<'tcx> for Generalizer<'_, '_, 'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.infcx.tcx
     }

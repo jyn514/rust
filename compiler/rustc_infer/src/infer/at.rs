@@ -30,25 +30,25 @@ use super::*;
 use rustc_middle::ty::relate::{Relate, TypeRelation};
 use rustc_middle::ty::Const;
 
-pub struct At<'a, 'tcx> {
-    pub infcx: &'a InferCtxt<'a, 'tcx>,
-    pub cause: &'a ObligationCause<'tcx>,
+pub struct At<'a, 'b, 'tcx> {
+    pub infcx: &'b mut InferCtxt<'a, 'tcx>,
+    pub cause: &'b ObligationCause<'tcx>,
     pub param_env: ty::ParamEnv<'tcx>,
 }
 
-pub struct Trace<'a, 'tcx> {
-    at: At<'a, 'tcx>,
+pub struct Trace<'a, 'b, 'tcx> {
+    at: At<'a, 'b, 'tcx>,
     a_is_expected: bool,
     trace: TypeTrace<'tcx>,
 }
 
 impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     #[inline]
-    pub fn at(
-        &'a self,
-        cause: &'a ObligationCause<'tcx>,
+    pub fn at<'b>(
+        &'b mut self,
+        cause: &'b ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
-    ) -> At<'a, 'tcx> {
+    ) -> At<'a, 'b, 'tcx> {
         At { infcx: self, cause, param_env }
     }
 }
@@ -62,7 +62,7 @@ pub trait ToTrace<'tcx>: Relate<'tcx> + Copy {
     ) -> TypeTrace<'tcx>;
 }
 
-impl<'a, 'tcx> At<'a, 'tcx> {
+impl<'a, 'b, 'tcx> At<'a, 'b, 'tcx> {
     /// Hacky routine for equating two impl headers in coherence.
     pub fn eq_impl_headers(
         self,
@@ -164,7 +164,7 @@ impl<'a, 'tcx> At<'a, 'tcx> {
     /// error-reporting, but doesn't actually perform any operation
     /// yet (this is useful when you want to set the trace using
     /// distinct values from those you wish to operate upon).
-    pub fn trace<T>(self, expected: T, actual: T) -> Trace<'a, 'tcx>
+    pub fn trace<T>(self, expected: T, actual: T) -> Trace<'a, 'b, 'tcx>
     where
         T: ToTrace<'tcx>,
     {
@@ -174,7 +174,7 @@ impl<'a, 'tcx> At<'a, 'tcx> {
     /// Like `trace`, but the expected value is determined by the
     /// boolean argument (if true, then the first argument `a` is the
     /// "expected" value).
-    pub fn trace_exp<T>(self, a_is_expected: bool, a: T, b: T) -> Trace<'a, 'tcx>
+    pub fn trace_exp<T>(self, a_is_expected: bool, a: T, b: T) -> Trace<'a, 'b, 'tcx>
     where
         T: ToTrace<'tcx>,
     {
@@ -183,7 +183,7 @@ impl<'a, 'tcx> At<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> Trace<'a, 'tcx> {
+impl<'a, 'b, 'tcx> Trace<'a, 'b, 'tcx> {
     /// Makes `a <: b` where `a` may or may not be expected (if
     /// `a_is_expected` is true, then `a` is expected).
     pub fn sub<T>(self, a: T, b: T) -> InferResult<'tcx, ()>

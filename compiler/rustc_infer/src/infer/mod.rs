@@ -697,11 +697,11 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         vars
     }
 
-    fn combine_fields(
-        &'a self,
+    fn combine_fields<'s>(
+        &'s mut self,
         trace: TypeTrace<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
-    ) -> CombineFields<'a, 'tcx> {
+    ) -> CombineFields<'s, 'a, 'tcx> {
         CombineFields {
             infcx: self,
             trace,
@@ -802,7 +802,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
     /// Execute `f` and commit the bindings if closure `f` returns `Ok(_)`.
     pub fn commit_if_ok<T, E, F>(&mut self, f: F) -> Result<T, E>
     where
-        F: FnOnce(&mut Self, &CombinedSnapshot<'a, 'tcx>) -> Result<T, E>,
+        F: for<'s> FnOnce(&'s mut Self, &CombinedSnapshot<'a, 'tcx>) -> Result<T, E>,
     {
         debug!("commit_if_ok()");
         let snapshot = self.start_snapshot();
@@ -924,7 +924,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
 
     pub fn subtype_predicate(
         &mut self,
-        cause: &ObligationCause<'tcx>,
+        cause: &'a ObligationCause<'tcx>,
         param_env: ty::ParamEnv<'tcx>,
         predicate: ty::PolySubtypePredicate<'tcx>,
     ) -> Option<InferResult<'tcx, ()>> {
