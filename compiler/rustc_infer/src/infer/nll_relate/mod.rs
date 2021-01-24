@@ -791,6 +791,7 @@ impl<'me, 'tcx> TypeVisitor<'tcx> for ScopeInstantiator<'me, 'tcx> {
 /// [blog post]: https://is.gd/0hKvIr
 struct TypeGeneralizer<'cx, 'tcx, D>
 where
+    'tcx: 'cx,
     D: TypeRelatingDelegate<'cx, 'tcx>,
 {
     _tcx: PhantomData<(&'cx (), &'tcx ())>,
@@ -813,9 +814,9 @@ where
     universe: ty::UniverseIndex,
 }
 
-impl<D> TypeRelation<'tcx> for TypeGeneralizer<'me, 'tcx, D>
+impl<D> TypeRelation<'tcx> for TypeGeneralizer<'cx, 'tcx, D>
 where
-    D: TypeRelatingDelegate<'me, 'tcx>,
+    D: TypeRelatingDelegate<'cx, 'tcx>,
 {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.delegate.infcx().tcx
