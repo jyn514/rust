@@ -1341,7 +1341,7 @@ impl<'a, 'tcx> InferCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn fully_resolve<T: TypeFoldable<'tcx>>(&self, value: T) -> FixupResult<'tcx, T> {
+    pub fn fully_resolve<T: TypeFoldable<'tcx>>(&mut self, value: T) -> FixupResult<'tcx, T> {
         /*!
          * Attempts to resolve all type/region/const variables in
          * `value`. Region inference must have been run already (e.g.,
