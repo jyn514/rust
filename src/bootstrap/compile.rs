@@ -65,7 +65,9 @@ impl Step for Std {
 
         // These artifacts were already copied (in `impl Step for Sysroot`).
         // Don't recompile them.
-        if builder.config.download_rustc {
+        // NOTE: the ABI of the beta compiler is different from the ABI of the downloaded compiler,
+        // so its artifacts can't be reused.
+        if builder.config.download_rustc && compiler.stage != 0 {
             return;
         }
 
@@ -513,7 +515,9 @@ impl Step for Rustc {
         let compiler = self.compiler;
         let target = self.target;
 
-        if builder.config.download_rustc {
+        // NOTE: the ABI of the beta compiler is different from the ABI of the downloaded compiler,
+        // so its artifacts can't be reused.
+        if builder.config.download_rustc && compiler.stage != 0 {
             // Copy the existing artifacts instead of rebuilding them.
             // NOTE: this path is only taken for tools linking to rustc-dev.
             builder.ensure(Sysroot { compiler });
@@ -934,14 +938,23 @@ impl Step for Sysroot {
         t!(fs::create_dir_all(&sysroot));
 
         // If we're downloading a compiler from CI, we can use the same compiler for all stages other than 0.
-        if builder.config.download_rustc {
+        if builder.config.download_rustc && compiler.stage != 0 {
             assert_eq!(
                 builder.config.build, compiler.host,
                 "Cross-compiling is not yet supported with `download-rustc`",
             );
             // Copy the compiler into the correct sysroot.
-            let stage0_dir = builder.config.out.join(&*builder.config.build.triple).join("stage0");
-            builder.cp_r(&stage0_dir, &sysroot);
+            let master_rustc_dir = builder.config.out.join(&*builder.config.build.triple).join("master-rustc");
+            builder.cp_r(&master_rustc_dir, &sysroot);
+            // If this is the stage0-sysroot, don't copy the standard library, because stage1
+            // rustdoc links to libstd compiled by the *beta* compiler, not the stage1 compiler.
+            // Instead, build libstd from source and copy it into the sysroot.
+            // FIXME: support beta channel
+            //let component = format!("rust-std-nightly-{}", builder.config.build.triple);
+            //let 
+            // > tar -O -xf rust-std-nightly-x86_64-unknown-linux-gnu/rust-std-x86_64-unknown-linux-gnu/manifest.in build/cache/ca98712ff92c56506442cd5a500547f2f0cba0c3/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz
+            let downloaded_libstd_manifest = 
+            //for libstd_file in manif
             return INTERNER.intern_path(sysroot);
         }
 
