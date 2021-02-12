@@ -31,14 +31,12 @@ use std::{cell::RefCell, collections::hash_map::Entry};
 use crate::clean;
 use crate::clean::inline::build_external_trait;
 use crate::clean::{AttributesExt, MAX_DEF_IDX};
+use crate::config::OutputFormat;
 use crate::config::{Options as RustdocOptions, RenderOptions};
-use crate::config::{OutputFormat, RenderInfo};
 use crate::formats::cache::Cache;
 use crate::passes::{self, Condition::*, ConditionalPass};
 
 crate use rustc_session::config::{DebuggingOptions, Input, Options};
-
-crate type ExternalPaths = FxHashMap<DefId, (Vec<String>, clean::TypeKind)>;
 
 crate struct DocContext<'tcx> {
     crate tcx: TyCtxt<'tcx>,
@@ -501,10 +499,6 @@ crate fn run_global_ctxt(
             .collect(),
     };
 
-    let mut renderinfo = RenderInfo::default();
-    renderinfo.access_levels = access_levels;
-    renderinfo.output_format = output_format;
-
     let mut ctxt = DocContext {
         tcx,
         resolver,
@@ -524,7 +518,7 @@ crate fn run_global_ctxt(
             .filter(|trait_def_id| tcx.trait_is_auto(*trait_def_id))
             .collect(),
         module_trait_cache: RefCell::new(FxHashMap::default()),
-        cache: Cache::new(renderinfo, render_options.document_private),
+        cache: Cache::new(access_levels, render_options.document_private),
         inlined: RefCell::new(FxHashSet::default()),
         output_format,
         render_options,
