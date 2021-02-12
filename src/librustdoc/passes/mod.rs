@@ -93,27 +93,35 @@ crate const PASSES: &[Pass] = &[
 ];
 
 /// The list of passes run by default.
-crate const DEFAULT_PASSES: &[ConditionalPass] = &[
-    ConditionalPass::always(COLLECT_TRAIT_IMPLS),
-    ConditionalPass::always(UNINDENT_COMMENTS),
-    ConditionalPass::always(CHECK_PRIVATE_ITEMS_DOC_TESTS),
-    ConditionalPass::new(STRIP_HIDDEN, WhenNotDocumentHidden),
-    ConditionalPass::new(STRIP_PRIVATE, WhenNotDocumentPrivate),
-    ConditionalPass::new(STRIP_PRIV_IMPORTS, WhenDocumentPrivate),
-    ConditionalPass::always(COLLECT_INTRA_DOC_LINKS),
-    ConditionalPass::always(CHECK_CODE_BLOCK_SYNTAX),
-    ConditionalPass::always(CHECK_INVALID_HTML_TAGS),
-    ConditionalPass::always(PROPAGATE_DOC_CFG),
-    ConditionalPass::always(CHECK_NON_AUTOLINKS),
-];
+crate const DEFAULT_PASSES: (&[ConditionalPass], &[ConditionalPass]) = (
+    // These passes must be run (in order!) before creating the cache.
+    &[
+        ConditionalPass::always(COLLECT_TRAIT_IMPLS),
+        ConditionalPass::always(UNINDENT_COMMENTS),
+        ConditionalPass::always(CHECK_PRIVATE_ITEMS_DOC_TESTS),
+        ConditionalPass::new(STRIP_HIDDEN, WhenNotDocumentHidden),
+        ConditionalPass::new(STRIP_PRIVATE, WhenNotDocumentPrivate),
+        ConditionalPass::new(STRIP_PRIV_IMPORTS, WhenDocumentPrivate),
+    ],
+    // These passes can be run in an order, and do not modify the cache, but may read from it.
+    &[
+        ConditionalPass::always(COLLECT_INTRA_DOC_LINKS),
+        ConditionalPass::always(CHECK_CODE_BLOCK_SYNTAX),
+        ConditionalPass::always(CHECK_INVALID_HTML_TAGS),
+        ConditionalPass::always(PROPAGATE_DOC_CFG),
+        ConditionalPass::always(CHECK_NON_AUTOLINKS),
+    ],
+);
 
 /// The list of default passes run when `--doc-coverage` is passed to rustdoc.
-crate const COVERAGE_PASSES: &[ConditionalPass] = &[
-    ConditionalPass::always(COLLECT_TRAIT_IMPLS),
-    ConditionalPass::new(STRIP_HIDDEN, WhenNotDocumentHidden),
-    ConditionalPass::new(STRIP_PRIVATE, WhenNotDocumentPrivate),
-    ConditionalPass::always(CALCULATE_DOC_COVERAGE),
-];
+crate const COVERAGE_PASSES: (&[ConditionalPass], &[ConditionalPass]) = (
+    &[
+        ConditionalPass::always(COLLECT_TRAIT_IMPLS),
+        ConditionalPass::new(STRIP_HIDDEN, WhenNotDocumentHidden),
+        ConditionalPass::new(STRIP_PRIVATE, WhenNotDocumentPrivate),
+    ],
+    &[ConditionalPass::always(CALCULATE_DOC_COVERAGE)],
+);
 
 impl ConditionalPass {
     crate const fn always(pass: Pass) -> Self {
@@ -135,11 +143,11 @@ crate enum DefaultPassOption {
 }
 
 /// Returns the given default set of passes.
-crate fn defaults(default_set: DefaultPassOption) -> &'static [ConditionalPass] {
+crate fn defaults(default_set: DefaultPassOption) -> (&'static [ConditionalPass], &'static [ConditionalPass]) {
     match default_set {
         DefaultPassOption::Default => DEFAULT_PASSES,
         DefaultPassOption::Coverage => COVERAGE_PASSES,
-        DefaultPassOption::None => &[],
+        DefaultPassOption::None => (&[], &[]),
     }
 }
 

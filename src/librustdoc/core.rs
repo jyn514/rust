@@ -603,20 +603,7 @@ crate fn run_global_ctxt(
         }
     }
 
-    let passes = passes::defaults(default_passes).iter().copied().chain(
-        manual_passes.into_iter().flat_map(|name| {
-            if let Some(pass) = passes::find_pass(&name) {
-                Some(ConditionalPass::always(pass))
-            } else {
-                error!("unknown pass {}, skipping", name);
-                None
-            }
-        }),
-    );
-
-    info!("Executing passes");
-
-    for p in passes {
+    let run_pass = |p: ConditionalPass, krate: clean::Crate, ctxt: &mut DocContext<'_>| {
         let run = match p.condition {
             Always => true,
             WhenDocumentPrivate => ctxt.render_options.document_private,
@@ -625,23 +612,36 @@ crate fn run_global_ctxt(
         };
         if run {
             debug!("running pass {}", p.pass.name);
-            krate = ctxt.tcx.sess.time(p.pass.name, || (p.pass.run)(krate, &mut ctxt));
+            ctxt.tcx.sess.time(p.pass.name, || (p.pass.run)(krate, ctxt))
+        } else {
+            krate
         }
+    };
+    info!("Executing passes");
+    let (default_passes_before_cache, default_passes_after_cache) = passes::defaults(default_passes);
+
+    for &p in default_passes_before_cache {
+        krate = run_pass(p, krate, &mut ctxt);
     }
 
+    krate = ctxt.cache.get_mut().populate(krate, tcx, &ctxt.render_options.extern_html_root_urls, &ctxt.render_options.output);
+
+    for &p in default_passes_after_cache {
+        krate = run_pass(p, krate, &mut ctxt);
+    }
+    for name in manual_passes {
+        if let Some(pass) = passes::find_pass(&name) {
+            krate = run_pass(ConditionalPass::always(pass), krate, &mut ctxt);
+        } else {
+            error!("unknown pass {}, skipping", name);
+        }
+    }
     ctxt.sess().abort_if_errors();
-
-    let render_options = ctxt.render_options;
-    let mut cache = ctxt.cache.into_inner();
-
-    krate = tcx.sess.time("create_format_cache", || {
-        cache.populate(krate, tcx, &render_options.extern_html_root_urls, &render_options.output)
-    });
 
     // The main crate doc comments are always collapsed.
     krate.collapsed = true;
 
-    (krate, render_options, cache)
+    (krate, ctxt.render_options, ctxt.cache.into_inner())
 }
 
 /// Due to <https://github.com/rust-lang/rust/pull/73566>,
