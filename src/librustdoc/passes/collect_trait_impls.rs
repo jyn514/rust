@@ -48,9 +48,9 @@ crate fn collect_trait_impls(krate: Crate, cx: &mut DocContext<'_>) -> Crate {
                 if !cx.tcx.get_attrs(def_id).lists(sym::doc).has_word(sym::hidden) {
                     let self_ty = cx.tcx.type_of(def_id);
                     let impls = get_auto_trait_and_blanket_impls(cx, self_ty, def_id);
-                    let mut renderinfo = cx.renderinfo.borrow_mut();
+                    let mut inlined = cx.inlined.borrow_mut();
 
-                    new_items.extend(impls.filter(|i| renderinfo.inlined.insert(i.def_id)));
+                    new_items.extend(impls.filter(|i| inlined.insert(i.def_id)));
                 }
             })
         }
