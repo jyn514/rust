@@ -1311,7 +1311,7 @@ fn clean_qpath(hir_ty: &hir::Ty<'_>, cx: &DocContext<'_>) -> Type {
                 // Substitute private type aliases
                 if let Some(def_id) = def_id.as_local() {
                     let hir_id = cx.tcx.hir().local_def_id_to_hir_id(def_id);
-                    if !cx.renderinfo.borrow().access_levels.is_exported(def_id.to_def_id()) {
+                    if !cx.cache.borrow().access_levels.is_exported(def_id.to_def_id()) {
                         alias = Some(&cx.tcx.hir().expect_item(hir_id).kind);
                     }
                 }
@@ -2304,14 +2304,14 @@ impl Clean<Item> for (&hir::MacroDef<'_>, Option<Symbol>) {
             if matchers.len() <= 1 {
                 format!(
                     "{}macro {}{} {{\n    ...\n}}",
-                    vis.print_with_space(cx.tcx, def_id, &cx.cache),
+                    vis.print_with_space(cx.tcx, def_id, &cx.cache.borrow()),
                     name,
                     matchers.iter().map(|span| span.to_src(cx)).collect::<String>(),
                 )
             } else {
                 format!(
                     "{}macro {} {{\n{}}}",
-                    vis.print_with_space(cx.tcx, def_id, &cx.cache),
+                    vis.print_with_space(cx.tcx, def_id, &cx.cache.borrow()),
                     name,
                     matchers
                         .iter()

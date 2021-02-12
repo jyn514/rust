@@ -477,12 +477,12 @@ fn wrap_return(diag: &rustc_errors::Handler, res: Result<(), String>) -> MainRes
 fn run_renderer<'tcx, T: formats::FormatRenderer<'tcx>>(
     krate: clean::Crate,
     renderopts: config::RenderOptions,
-    render_info: config::RenderInfo,
+    cache: formats::cache::Cache,
     diag: &rustc_errors::Handler,
     edition: rustc_span::edition::Edition,
     tcx: TyCtxt<'tcx>,
 ) -> MainResult {
-    match formats::run_format::<T>(krate, renderopts, render_info, &diag, edition, tcx) {
+    match formats::run_format::<T>(krate, renderopts, cache, &diag, edition, tcx) {
         Ok(_) => Ok(()),
         Err(e) => {
             let mut msg = diag.struct_err(&format!("couldn't generate documentation: {}", e.error));
@@ -551,7 +551,7 @@ fn main_options(options: config::Options) -> MainResult {
             let mut global_ctxt = abort_on_err(queries.global_ctxt(), sess).peek_mut();
 
             global_ctxt.enter(|tcx| {
-                let (mut krate, render_info, render_opts) = sess.time("run_global_ctxt", || {
+                let (krate, render_opts, mut cache) = sess.time("run_global_ctxt", || {
                     core::run_global_ctxt(
                         tcx,
                         resolver,
@@ -563,7 +563,7 @@ fn main_options(options: config::Options) -> MainResult {
                 });
                 info!("finished with rustc");
 
-                krate.version = crate_version;
+                cache.crate_version = crate_version;
 
                 if show_coverage {
                     // if we ran coverage, bail early, we don't need to also generate docs at this point
@@ -582,7 +582,7 @@ fn main_options(options: config::Options) -> MainResult {
                         run_renderer::<html::render::Context<'_>>(
                             krate,
                             render_opts,
-                            render_info,
+                            cache,
                             &diag,
                             edition,
                             tcx,
@@ -592,7 +592,7 @@ fn main_options(options: config::Options) -> MainResult {
                         run_renderer::<json::JsonRenderer<'_>>(
                             krate,
                             render_opts,
-                            render_info,
+                            cache,
                             &diag,
                             edition,
                             tcx,

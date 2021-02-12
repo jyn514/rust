@@ -23,10 +23,10 @@ crate fn krate(mut cx: &mut DocContext<'_>) -> Crate {
     let krate = cx.tcx.hir().krate();
     let module = crate::visit_ast::RustdocVisitor::new(&mut cx).visit(krate);
 
-    let mut r = cx.renderinfo.get_mut();
-    r.deref_trait_did = cx.tcx.lang_items().deref_trait();
-    r.deref_mut_trait_did = cx.tcx.lang_items().deref_mut_trait();
-    r.owned_box_did = cx.tcx.lang_items().owned_box();
+    let mut cache = cx.cache.get_mut();
+    cache.deref_trait_did = cx.tcx.lang_items().deref_trait();
+    cache.deref_mut_trait_did = cx.tcx.lang_items().deref_mut_trait();
+    cache.owned_box_did = cx.tcx.lang_items().owned_box();
 
     let mut externs = Vec::new();
     for &cnum in cx.tcx.crates().iter() {
@@ -348,7 +348,7 @@ crate fn resolve_type(cx: &DocContext<'_>, path: Path, id: hir::HirId) -> Type {
             return Generic(kw::SelfUpper);
         }
         Res::Def(DefKind::TyParam, _) if path.segments.len() == 1 => {
-            return Generic(Symbol::intern(&format!("{:#}", path.print(&cx.cache))));
+            return Generic(Symbol::intern(&format!("{:#}", path.print(&cx.cache.borrow()))));
         }
         Res::SelfTy(..) | Res::Def(DefKind::TyParam | DefKind::AssocTy, _) => true,
         _ => false,
