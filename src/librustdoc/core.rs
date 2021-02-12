@@ -641,7 +641,14 @@ crate fn run_global_ctxt(
     // The main crate doc comments are always collapsed.
     krate.collapsed = true;
 
-    (krate, ctxt.render_options, ctxt.cache.into_inner())
+    // This is a giant hack. `cx.external_traits` is used to populate the cache (through the Rc in `krate.extern_traits`),
+    // but intra-doc links both read from `cache.traits` and write to `cx.external_traits`. Now that all passes have run,
+    // 'flush' the reads from external_traits into `cache.traits`.
+    // FIXME: get rid of `krate.extern_traits` so `register_res` can just write to the cache directly.
+    let mut cache = ctxt.cache.into_inner();
+    cache.traits.extend(&mut ctxt.external_traits.borrow_mut().drain());
+
+    (krate, ctxt.render_options, cache)
 }
 
 /// Due to <https://github.com/rust-lang/rust/pull/73566>,
