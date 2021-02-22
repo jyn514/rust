@@ -53,11 +53,11 @@ crate struct DocContext<'tcx> {
     // The current set of type and lifetime substitutions,
     // for expanding type aliases at the HIR level:
     /// Table `DefId` of type parameter -> substituted type
-    crate ty_substs: RefCell<FxHashMap<DefId, clean::Type>>,
+    crate ty_substs: FxHashMap<DefId, clean::Type>,
     /// Table `DefId` of lifetime parameter -> substituted lifetime
-    crate lt_substs: RefCell<FxHashMap<DefId, clean::Lifetime>>,
+    crate lt_substs: FxHashMap<DefId, clean::Lifetime>,
     /// Table `DefId` of const parameter -> substituted const
-    crate ct_substs: RefCell<FxHashMap<DefId, clean::Constant>>,
+    crate ct_substs: FxHashMap<DefId, clean::Constant>,
     /// Table synthetic type parameter for `impl Trait` in argument position -> bounds
     crate impl_trait_bounds: RefCell<FxHashMap<ImplTraitParam, Vec<clean::GenericBound>>>,
     crate fake_def_ids: FxHashMap<CrateNum, DefIndex>,
@@ -112,14 +112,14 @@ impl<'tcx> DocContext<'tcx> {
         F: FnOnce(&mut Self) -> R,
     {
         let (old_tys, old_lts, old_cts) = (
-            mem::replace(&mut *self.ty_substs.get_mut(), ty_substs),
-            mem::replace(&mut *self.lt_substs.get_mut(), lt_substs),
-            mem::replace(&mut *self.ct_substs.get_mut(), ct_substs),
+            mem::replace(&mut self.ty_substs, ty_substs),
+            mem::replace(&mut self.lt_substs, lt_substs),
+            mem::replace(&mut self.ct_substs, ct_substs),
         );
         let r = f(self);
-        *self.ty_substs.get_mut() = old_tys;
-        *self.lt_substs.get_mut() = old_lts;
-        *self.ct_substs.get_mut() = old_cts;
+        self.ty_substs = old_tys;
+        self.lt_substs = old_lts;
+        self.ct_substs = old_cts;
         r
     }
 

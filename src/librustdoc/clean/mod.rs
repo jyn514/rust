@@ -357,7 +357,7 @@ impl Clean<Lifetime> for hir::Lifetime {
                 | rl::Region::LateBound(_, node_id, _)
                 | rl::Region::Free(_, node_id),
             ) => {
-                if let Some(lt) = cx.lt_substs.borrow().get(&node_id).cloned() {
+                if let Some(lt) = cx.lt_substs.get(&node_id).cloned() {
                     return lt;
                 }
             }
@@ -1291,7 +1291,7 @@ fn clean_qpath(hir_ty: &hir::Ty<'_>, cx: &mut DocContext<'_>) -> Type {
     match qpath {
         hir::QPath::Resolved(None, ref path) => {
             if let Res::Def(DefKind::TyParam, did) = path.res {
-                if let Some(new_ty) = cx.ty_substs.borrow().get(&did).cloned() {
+                if let Some(new_ty) = cx.ty_substs.get(&did).cloned() {
                     return new_ty;
                 }
                 if let Some(bounds) = cx.impl_trait_bounds.borrow_mut().remove(&did.into()) {
