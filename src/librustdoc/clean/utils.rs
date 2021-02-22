@@ -493,10 +493,10 @@ crate fn enter_impl_trait<F, R>(cx: &mut DocContext<'_>, f: F) -> R
 where
     F: FnOnce(&mut DocContext<'_>) -> R,
 {
-    let old_bounds = mem::take(&mut *cx.impl_trait_bounds.get_mut());
+    let old_bounds = mem::take(&mut cx.impl_trait_bounds);
     let r = f(cx);
-    assert!(cx.impl_trait_bounds.borrow().is_empty());
-    *cx.impl_trait_bounds.get_mut() = old_bounds;
+    assert!(cx.impl_trait_bounds.is_empty());
+    cx.impl_trait_bounds = old_bounds;
     r
 }
 

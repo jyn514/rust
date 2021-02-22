@@ -644,7 +644,7 @@ impl Clean<Generics> for hir::Generics<'_> {
                 match param.kind {
                     GenericParamDefKind::Lifetime => unreachable!(),
                     GenericParamDefKind::Type { did, ref bounds, .. } => {
-                        cx.impl_trait_bounds.borrow_mut().insert(did.into(), bounds.clone());
+                        cx.impl_trait_bounds.insert(did.into(), bounds.clone());
                     }
                     GenericParamDefKind::Const { .. } => unreachable!(),
                 }
@@ -803,7 +803,7 @@ impl<'a, 'tcx> Clean<Generics> for (&'a ty::Generics, ty::GenericPredicates<'tcx
                 unreachable!();
             }
 
-            cx.impl_trait_bounds.borrow_mut().insert(param, bounds);
+            cx.impl_trait_bounds.insert(param, bounds);
         }
 
         // Now that `cx.impl_trait_bounds` is populated, we can process
@@ -1294,7 +1294,7 @@ fn clean_qpath(hir_ty: &hir::Ty<'_>, cx: &mut DocContext<'_>) -> Type {
                 if let Some(new_ty) = cx.ty_substs.get(&did).cloned() {
                     return new_ty;
                 }
-                if let Some(bounds) = cx.impl_trait_bounds.borrow_mut().remove(&did.into()) {
+                if let Some(bounds) = cx.impl_trait_bounds.remove(&did.into()) {
                     return ImplTrait(bounds);
                 }
             }
@@ -1651,7 +1651,7 @@ impl<'tcx> Clean<Type> for Ty<'tcx> {
             ty::Projection(ref data) => data.clean(cx),
 
             ty::Param(ref p) => {
-                if let Some(bounds) = cx.impl_trait_bounds.borrow_mut().remove(&p.index.into()) {
+                if let Some(bounds) = cx.impl_trait_bounds.remove(&p.index.into()) {
                     ImplTrait(bounds)
                 } else {
                     Generic(p.name)
