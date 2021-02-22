@@ -615,19 +615,19 @@ crate fn record_extern_trait(cx: &mut DocContext<'_>, did: DefId) {
 
     {
         if cx.external_traits.borrow().contains_key(&did)
-            || cx.active_extern_traits.borrow().contains(&did)
+            || cx.active_extern_traits.contains(&did)
         {
             return;
         }
     }
 
     {
-        cx.active_extern_traits.borrow_mut().insert(did);
+        cx.active_extern_traits.insert(did);
     }
 
     debug!("record_extern_trait: {:?}", did);
     let trait_ = build_external_trait(cx, did);
 
     cx.external_traits.borrow_mut().insert(did, trait_);
-    cx.active_extern_traits.borrow_mut().remove(&did);
+    cx.active_extern_traits.remove(&did);
 }

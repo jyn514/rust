@@ -49,7 +49,7 @@ crate struct DocContext<'tcx> {
     crate external_traits: Rc<RefCell<FxHashMap<DefId, clean::Trait>>>,
     /// Used while populating `external_traits` to ensure we don't process the same trait twice at
     /// the same time.
-    crate active_extern_traits: RefCell<FxHashSet<DefId>>,
+    crate active_extern_traits: FxHashSet<DefId>,
     // The current set of type and lifetime substitutions,
     // for expanding type aliases at the HIR level:
     /// Table `DefId` of type parameter -> substituted type
