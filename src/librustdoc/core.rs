@@ -63,7 +63,7 @@ crate struct DocContext<'tcx> {
     crate fake_def_ids: FxHashMap<CrateNum, DefIndex>,
     /// Auto-trait or blanket impls processed so far, as `(self_ty, trait_def_id)`.
     // FIXME(eddyb) make this a `ty::TraitRef<'tcx>` set.
-    crate generated_synthetics: RefCell<FxHashSet<(Ty<'tcx>, DefId)>>,
+    crate generated_synthetics: FxHashSet<(Ty<'tcx>, DefId)>,
     crate auto_traits: Vec<DefId>,
     /// The options given to rustdoc that could be relevant to a pass.
     crate render_options: RenderOptions,
@@ -75,7 +75,7 @@ crate struct DocContext<'tcx> {
     /// This same cache is used throughout rustdoc, including in `render`.
     crate cache: Cache,
     /// Used by `clean::inline` to tell if an item has already been inlined.
-    crate inlined: RefCell<FxHashSet<DefId>>,
+    crate inlined: FxHashSet<DefId>,
     /// Used by `calculate_doc_coverage`.
     crate output_format: OutputFormat,
 }
@@ -519,7 +519,7 @@ crate fn run_global_ctxt(
             .collect(),
         module_trait_cache: RefCell::new(FxHashMap::default()),
         cache: Cache::new(access_levels, render_options.document_private),
-        inlined: RefCell::new(FxHashSet::default()),
+        inlined: Default::default(),
         output_format,
         render_options,
     };
