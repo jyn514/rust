@@ -1274,6 +1274,67 @@ pub enum DiagnosticOutput {
     Raw(Box<dyn Write + Send>),
 }
 
+/// This allows tools to enable rust logging without having to magically match rustc's
+/// tracing crate version. In contrast to `init_rustc_env_logger` it allows you to choose an env var
+/// other than `RUSTC_LOG`.
+pub fn init_env_logger(env: &str, sess: &ParseSess) {
+    use std::io;
+    use crate::config::ErrorOutputType;
+
+    fn stderr_isatty() -> bool {
+        atty::is(atty::Stream::Stderr)
+    }
+
+    let mut depinfo = sess.env_depinfo.borrow_mut();
+
+    let log_val = std::env::var(env);
+    depinfo.insert((Symbol::intern(env), log_val.as_deref().ok().map(Symbol::intern)));
+    // Don't register a dispatcher if there's no filter to print anything
+    match log_val {
+        Err(_) => return,
+        Ok(s) if s.is_empty() => return,
+        Ok(_) => {}
+    }
+
+    let color_env = String::from(env) + "_COLOR";
+    let color_val = std::env::var(&color_env);
+    depinfo.insert((Symbol::intern(&color_env), color_val.as_deref().ok().map(Symbol::intern)));
+    let color_logs = match color_val.as_deref() {
+        Ok("always") => true,
+        Ok("never") => false,
+        Ok("auto") => stderr_isatty(),
+        Ok(value) => early_error(
+            ErrorOutputType::default(),
+            &format!(
+                "invalid log color value '{}': expected one of always, never, or auto",
+                value
+            ),
+        ),
+        Err(std::env::VarError::NotPresent) => stderr_isatty(),
+        Err(std::env::VarError::NotUnicode(_value)) => early_error(
+            ErrorOutputType::default(),
+            "non-Unicode log color value: expected one of always, never, or auto",
+        ),
+    };
+
+    let filter = tracing_subscriber::EnvFilter::from_env(env);
+    let layer = tracing_tree::HierarchicalLayer::default()
+        .with_writer(io::stderr)
+        .with_indent_lines(true)
+        .with_ansi(color_logs)
+        .with_targets(true)
+        .with_wraparound(10)
+        .with_verbose_exit(true)
+        .with_verbose_entry(true)
+        .with_indent_amount(2);
+    #[cfg(parallel_compiler)]
+    let layer = layer.with_thread_ids(true).with_thread_names(true);
+
+    use tracing_subscriber::layer::SubscriberExt;
+    let subscriber = tracing_subscriber::Registry::default().with(filter).with(layer);
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+}
+
 pub fn build_session(
     sopts: config::Options,
     local_crate_source_file: Option<PathBuf>,
@@ -1350,6 +1411,8 @@ pub fn build_session(
 
     let mut parse_sess = ParseSess::with_span_handler(span_diagnostic, source_map);
     parse_sess.assume_incomplete_release = sopts.debugging_opts.assume_incomplete_release;
+    init_env_logger(sopts.env_log_name, &parse_sess);
+
     let sysroot = match &sopts.maybe_sysroot {
         Some(sysroot) => sysroot.clone(),
         None => filesearch::get_or_default_sysroot(),

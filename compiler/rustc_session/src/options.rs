@@ -148,6 +148,8 @@ top_level_options!(
         json_artifact_notifications: bool [TRACKED],
 
         pretty: Option<PpMode> [UNTRACKED],
+
+        env_log_name: &'static str [UNTRACKED],
     }
 );
 

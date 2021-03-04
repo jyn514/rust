@@ -735,6 +735,7 @@ impl Default for Options {
             edition: DEFAULT_EDITION,
             json_artifact_notifications: false,
             pretty: None,
+            env_log_name: "RUSTC_LOG",
         }
     }
 }
@@ -2049,6 +2050,7 @@ pub fn build_session_options(matches: &getopts::Matches) -> Options {
         edition,
         json_artifact_notifications,
         pretty,
+        env_log_name: "RUSTC_LOG",
     }
 }
 

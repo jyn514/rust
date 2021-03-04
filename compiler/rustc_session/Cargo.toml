@@ -5,10 +5,13 @@ version = "0.0.0"
 edition = "2018"
 
 [dependencies]
+atty = "0.2"
 bitflags = "1.2.1"
 getopts = "0.2"
 rustc_macros = { path = "../rustc_macros" }
-tracing = "0.1"
+tracing = { version = "0.1.18" }
+tracing-subscriber = { version = "0.2.13", default-features = false, features = ["fmt", "env-filter", "smallvec", "parking_lot", "ansi"] }
+tracing-tree = "0.1.6"
 rustc_errors = { path = "../rustc_errors" }
 rustc_feature = { path = "../rustc_feature" }
 rustc_target = { path = "../rustc_target" }
@@ -19,3 +22,6 @@ rustc_fs_util = { path = "../rustc_fs_util" }
 num_cpus = "1.0"
 rustc_ast = { path = "../rustc_ast" }
 rustc_lint_defs = { path = "../rustc_lint_defs" }
+
+[features]
+max_level_info = ['tracing/max_level_info']

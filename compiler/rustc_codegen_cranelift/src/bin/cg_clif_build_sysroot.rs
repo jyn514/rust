@@ -59,7 +59,6 @@ impl rustc_driver::Callbacks for CraneliftPassesCallbacks {
 }
 
 fn main() {
-    rustc_driver::init_rustc_env_logger();
     rustc_driver::install_ice_hook();
     let exit_code = rustc_driver::catch_with_exit_code(|| {
         let mut use_clif = false;

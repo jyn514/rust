@@ -41,7 +41,6 @@ impl rustc_driver::Callbacks for CraneliftPassesCallbacks {
 fn main() {
     let start_time = std::time::Instant::now();
     let start_rss = get_resident_set_size();
-    rustc_driver::init_rustc_env_logger();
     let mut callbacks = CraneliftPassesCallbacks::default();
     rustc_driver::install_ice_hook();
     let exit_code = rustc_driver::catch_with_exit_code(|| {

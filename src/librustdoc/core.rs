@@ -369,6 +369,7 @@ crate fn create_config(
         edition,
         describe_lints,
         crate_name,
+        env_log_name: "RUSTDOC_LOG",
         ..Options::default()
     };
 
