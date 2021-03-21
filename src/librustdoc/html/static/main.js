@@ -2970,7 +2970,7 @@ function defocusSearchBar() {
             }
         }
 
-        // `crates{version}.js` should always be loaded before this script, so we can use it safely.
+        // `crates.js` should always be loaded before this script, so we can use it safely.
         addSearchOptions(window.ALL_CRATES);
         addSidebarCrates(window.ALL_CRATES);
 

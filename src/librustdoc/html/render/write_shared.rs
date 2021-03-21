@@ -361,7 +361,7 @@ themePicker.onblur = handleThemeButtonsBlur;
             }
         }
 
-        let dst = cx.dst.join(&format!("source-files{}.js", cx.shared.resource_suffix));
+        let dst = cx.dst.join("source-files.js");
         let (mut all_sources, _krates) =
             try_err!(collect(&dst, &krate.name.as_str(), "sourcesIndex"), &dst);
         all_sources.push(format!(
@@ -378,7 +378,7 @@ themePicker.onblur = handleThemeButtonsBlur;
     }
 
     // Update the search index and crate list.
-    let dst = cx.dst.join(&format!("search-index{}.js", cx.shared.resource_suffix));
+    let dst = cx.dst.join("search-index.js");
     let (mut all_indexes, mut krates) = try_err!(collect_json(&dst, &krate.name.as_str()), &dst);
     all_indexes.push(search_index);
     krates.push(krate.name.to_string());
@@ -394,7 +394,7 @@ themePicker.onblur = handleThemeButtonsBlur;
         cx.shared.fs.write(&dst, &v)?;
     }
 
-    let crate_list_dst = cx.dst.join(&format!("crates{}.js", cx.shared.resource_suffix));
+    let crate_list_dst = cx.dst.join("crates.js");
     let crate_list =
         format!("window.ALL_CRATES = [{}];", krates.iter().map(|k| format!("\"{}\"", k)).join(","));
     cx.shared.fs.write(&crate_list_dst, &crate_list)?;
