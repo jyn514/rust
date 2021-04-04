@@ -883,7 +883,7 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                 debug!("using type_of(): {:?}", name);
                 name
             } else {
-                let name = self.cx.tcx.opt_item_name(self_id).map(|sym| sym.to_string());
+                let name = Some(self.cx.tcx.def_path(self_id).to_string_no_crate_verbose());
                 debug!("using item_name(): {:?}", name);
                 name
             }
