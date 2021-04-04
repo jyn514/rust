@@ -368,54 +368,30 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
     }
 
     /// Given a primitive type, try to resolve an associated item.
-    ///
-    /// HACK(jynelson): `item_str` is passed in instead of derived from `item_name` so the
-    /// lifetimes on `&'path` will work.
     fn resolve_primitive_associated_item(
         &self,
         prim_ty: PrimitiveType,
         ns: Namespace,
-        module_id: DefId,
         item_name: Symbol,
-    ) -> Result<(Res, Option<String>), ErrorKind<'path>> {
+    ) -> Option<(Res, String)> {
         let tcx = self.cx.tcx;
 
-        prim_ty
-            .impls(tcx)
-            .into_iter()
-            .find_map(|&impl_| {
-                tcx.associated_items(impl_)
-                    .find_by_name_and_namespace(tcx, Ident::with_dummy_span(item_name), ns, impl_)
-                    .map(|item| {
-                        let kind = item.kind;
-                        self.kind_side_channel.set(Some((kind.as_def_kind(), item.def_id)));
-                        match kind {
-                            ty::AssocKind::Fn => "method",
-                            ty::AssocKind::Const => "associatedconstant",
-                            ty::AssocKind::Type => "associatedtype",
-                        }
-                    })
-                    .map(|out| {
-                        (
-                            Res::Primitive(prim_ty),
-                            Some(format!("{}#{}.{}", prim_ty.as_str(), out, item_name)),
-                        )
-                    })
-            })
-            .ok_or_else(|| {
-                debug!(
-                    "returning primitive error for {}::{} in {} namespace",
-                    prim_ty.as_str(),
-                    item_name,
-                    ns.descr()
-                );
-                ResolutionFailure::NotResolved {
-                    module_id,
-                    partial_res: Some(Res::Primitive(prim_ty)),
-                    unresolved: item_name.to_string().into(),
-                }
-                .into()
-            })
+        prim_ty.impls(tcx).into_iter().find_map(|&impl_| {
+            tcx.associated_items(impl_)
+                .find_by_name_and_namespace(tcx, Ident::with_dummy_span(item_name), ns, impl_)
+                .map(|item| {
+                    let kind = item.kind;
+                    self.kind_side_channel.set(Some((kind.as_def_kind(), item.def_id)));
+                    match kind {
+                        ty::AssocKind::Fn => "method",
+                        ty::AssocKind::Const => "associatedconstant",
+                        ty::AssocKind::Type => "associatedtype",
+                    }
+                })
+                .map(|out| {
+                    (Res::Primitive(prim_ty), format!("{}#{}.{}", prim_ty.as_str(), out, item_name))
+                })
+        })
     }
 
     /// Resolves a string as a macro.
@@ -533,7 +509,20 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
 
         self.resolve_path(&path_root, TypeNS, module_id)
             .and_then(|ty_res| {
-                self.resolve_associated_item(ty_res, item_name, ns, module_id, extra_fragment)
+                let (res, fragment, side_channel) =
+                    self.resolve_associated_item(ty_res, item_name, ns, module_id)?;
+                let result = if extra_fragment.is_some() {
+                    Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(res)))
+                } else {
+                    // HACK(jynelson): `clean` expects the type, not the associated item
+                    // but the disambiguator logic expects the associated item.
+                    // Store the kind in a side channel so that only the disambiguator logic looks at it.
+                    if let Some((kind, id)) = side_channel {
+                        self.kind_side_channel.set(Some((kind, id)));
+                    }
+                    Ok((res, Some(fragment)))
+                };
+                Some(result)
             })
             .unwrap_or_else(|| {
                 if ns == Namespace::ValueNS {
@@ -549,21 +538,23 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             })
     }
 
+    /// Returns:
+    /// - None if no associated item was found
+    /// - Some((_, _, Some(_))) if an item was found and should go through a side channel
+    /// - Some((_, _, None)) otherwise
     fn resolve_associated_item(
         &mut self,
         root_res: Res,
         item_name: Symbol,
         ns: Namespace,
         module_id: DefId,
-        extra_fragment: &Option<String>,
-        // lol this is so bad
-    ) -> Option<Result<(Res, Option<String>), ErrorKind<'static>>> {
+    ) -> Option<(Res, String, Option<(DefKind, DefId)>)> {
         let tcx = self.cx.tcx;
 
         match root_res {
-            Res::Primitive(prim) => {
-                Some(self.resolve_primitive_associated_item(prim, ns, module_id, item_name))
-            }
+            Res::Primitive(prim) => self
+                .resolve_primitive_associated_item(prim, ns, item_name)
+                .map(|(x, y)| (x, y, None)),
             Res::Def(
                 DefKind::Struct
                 | DefKind::Union
@@ -606,17 +597,14 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         ty::AssocKind::Const => "associatedconstant",
                         ty::AssocKind::Type => "associatedtype",
                     };
-                    return Some(if extra_fragment.is_some() {
-                        Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(
-                            root_res,
-                        )))
-                    } else {
-                        // HACK(jynelson): `clean` expects the type, not the associated item
-                        // but the disambiguator logic expects the associated item.
-                        // Store the kind in a side channel so that only the disambiguator logic looks at it.
-                        self.kind_side_channel.set(Some((kind.as_def_kind(), id)));
-                        Ok((root_res, Some(format!("{}.{}", out, item_name))))
-                    });
+                    // HACK(jynelson): `clean` expects the type, not the associated item
+                    // but the disambiguator logic expects the associated item.
+                    // Store the kind in a side channel so that only the disambiguator logic looks at it.
+                    return Some((
+                        root_res,
+                        format!("{}.{}", out, item_name),
+                        Some((kind.as_def_kind(), id)),
+                    ));
                 }
 
                 if ns != Namespace::ValueNS {
@@ -635,22 +623,15 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 } else {
                     def.non_enum_variant().fields.iter().find(|item| item.ident.name == item_name)
                 }?;
-                Some(if extra_fragment.is_some() {
-                    let res = Res::Def(
-                        if def.is_enum() { DefKind::Variant } else { DefKind::Field },
-                        field.did,
-                    );
-                    Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(res)))
-                } else {
-                    Ok((
-                        root_res,
-                        Some(format!(
-                            "{}.{}",
-                            if def.is_enum() { "variant" } else { "structfield" },
-                            field.ident
-                        )),
-                    ))
-                })
+                Some((
+                    root_res,
+                    format!(
+                        "{}.{}",
+                        if def.is_enum() { "variant" } else { "structfield" },
+                        field.ident
+                    ),
+                    None,
+                ))
             }
             Res::Def(DefKind::Trait, did) => tcx
                 .associated_items(did)
@@ -668,14 +649,8 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                         }
                     };
 
-                    if extra_fragment.is_some() {
-                        Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(
-                            root_res,
-                        )))
-                    } else {
-                        let res = Res::Def(item.kind.as_def_kind(), item.def_id);
-                        Ok((res, Some(format!("{}.{}", kind, item_name))))
-                    }
+                    let res = Res::Def(item.kind.as_def_kind(), item.def_id);
+                    (res, format!("{}.{}", kind, item_name), None)
                 }),
             _ => None,
         }
