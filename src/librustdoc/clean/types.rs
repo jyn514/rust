@@ -40,6 +40,7 @@ use crate::core::DocContext;
 use crate::formats::cache::Cache;
 use crate::formats::item_type::ItemType;
 use crate::html::render::cache::ExternalLocation;
+use crate::passes::collect_intra_doc_links::EarlyIntraDocLink;
 
 use self::FnRetTy::*;
 use self::ItemKind::*;
@@ -192,8 +193,74 @@ impl Item {
         self.attrs.collapsed_doc_value()
     }
 
+    crate fn resolved_links<'c>(&self, cache: &'c Cache) -> impl Iterator<Item = &'c ItemLink> {
+        cache.intra_doc_links.get(&self.def_id).map_or(&[][..], |v| v.as_slice()).iter().map(
+            |early_link| match early_link {
+                EarlyIntraDocLink::Resolved(item_link) => item_link,
+            },
+        )
+    }
+
     crate fn links(&self, cache: &Cache) -> Vec<RenderedLink> {
-        self.attrs.links(self.def_id.krate, cache)
+        use crate::html::format::href;
+        use crate::html::render::CURRENT_DEPTH;
+
+        self.resolved_links(cache)
+            .filter_map(|ItemLink { link: s, link_text, did, fragment }| {
+                match *did {
+                    Some(did) => {
+                        if let Some((mut href, ..)) = href(did, cache) {
+                            if let Some(ref fragment) = *fragment {
+                                href.push('#');
+                                href.push_str(fragment);
+                            }
+                            Some(RenderedLink {
+                                original_text: s.clone(),
+                                new_text: link_text.clone(),
+                                href,
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    None => {
+                        if let Some(ref fragment) = *fragment {
+                            let url = match cache.extern_locations.get(&self.def_id.krate) {
+                                Some(&(_, _, ExternalLocation::Local)) => {
+                                    let depth = CURRENT_DEPTH.with(|l| l.get());
+                                    "../".repeat(depth)
+                                }
+                                Some(&(_, _, ExternalLocation::Remote(ref s))) => s.to_string(),
+                                Some(&(_, _, ExternalLocation::Unknown)) | None => String::from(
+                                    // NOTE: intentionally doesn't pass crate name to avoid having
+                                    // different primitive links between crates
+                                    if UnstableFeatures::from_environment(None).is_nightly_build() {
+                                        "https://doc.rust-lang.org/nightly"
+                                    } else {
+                                        "https://doc.rust-lang.org"
+                                    },
+                                ),
+                            };
+                            // This is a primitive so the url is done "by hand".
+                            let tail = fragment.find('#').unwrap_or_else(|| fragment.len());
+                            Some(RenderedLink {
+                                original_text: s.clone(),
+                                new_text: link_text.clone(),
+                                href: format!(
+                                    "{}{}std/primitive.{}.html{}",
+                                    url,
+                                    if !url.ends_with('/') { "/" } else { "" },
+                                    &fragment[..tail],
+                                    &fragment[tail..]
+                                ),
+                            })
+                        } else {
+                            panic!("This isn't a primitive?!");
+                        }
+                    }
+                }
+            })
+            .collect()
     }
 
     crate fn is_crate(&self) -> bool {
@@ -570,8 +637,6 @@ crate struct Attributes {
     crate other_attrs: Vec<ast::Attribute>,
     crate cfg: Option<Arc<Cfg>>,
     crate span: Option<rustc_span::Span>,
-    /// map from Rust paths to resolved defs and potential URL fragments
-    crate links: Vec<ItemLink>,
     crate inner_docs: bool,
 }
 
@@ -804,7 +869,6 @@ impl Attributes {
             other_attrs,
             cfg: if cfg == Cfg::True { None } else { Some(Arc::new(cfg)) },
             span: sp,
-            links: vec![],
             inner_docs,
         }
     }
@@ -848,72 +912,6 @@ impl Attributes {
         if self.doc_strings.is_empty() { None } else { Some(self.doc_strings.iter().collect()) }
     }
 
-    /// Gets links as a vector
-    ///
-    /// Cache must be populated before call
-    crate fn links(&self, krate: CrateNum, cache: &Cache) -> Vec<RenderedLink> {
-        use crate::html::format::href;
-        use crate::html::render::CURRENT_DEPTH;
-
-        self.links
-            .iter()
-            .filter_map(|ItemLink { link: s, link_text, did, fragment }| {
-                match *did {
-                    Some(did) => {
-                        if let Some((mut href, ..)) = href(did, cache) {
-                            if let Some(ref fragment) = *fragment {
-                                href.push('#');
-                                href.push_str(fragment);
-                            }
-                            Some(RenderedLink {
-                                original_text: s.clone(),
-                                new_text: link_text.clone(),
-                                href,
-                            })
-                        } else {
-                            None
-                        }
-                    }
-                    None => {
-                        if let Some(ref fragment) = *fragment {
-                            let url = match cache.extern_locations.get(&krate) {
-                                Some(&(_, _, ExternalLocation::Local)) => {
-                                    let depth = CURRENT_DEPTH.with(|l| l.get());
-                                    "../".repeat(depth)
-                                }
-                                Some(&(_, _, ExternalLocation::Remote(ref s))) => s.to_string(),
-                                Some(&(_, _, ExternalLocation::Unknown)) | None => String::from(
-                                    // NOTE: intentionally doesn't pass crate name to avoid having
-                                    // different primitive links between crates
-                                    if UnstableFeatures::from_environment(None).is_nightly_build() {
-                                        "https://doc.rust-lang.org/nightly"
-                                    } else {
-                                        "https://doc.rust-lang.org"
-                                    },
-                                ),
-                            };
-                            // This is a primitive so the url is done "by hand".
-                            let tail = fragment.find('#').unwrap_or_else(|| fragment.len());
-                            Some(RenderedLink {
-                                original_text: s.clone(),
-                                new_text: link_text.clone(),
-                                href: format!(
-                                    "{}{}std/primitive.{}.html{}",
-                                    url,
-                                    if !url.ends_with('/') { "/" } else { "" },
-                                    &fragment[..tail],
-                                    &fragment[tail..]
-                                ),
-                            })
-                        } else {
-                            panic!("This isn't a primitive?!");
-                        }
-                    }
-                }
-            })
-            .collect()
-    }
-
     crate fn get_doc_aliases(&self) -> FxHashSet<String> {
         let mut aliases = FxHashSet::default();
 
@@ -940,7 +938,6 @@ impl PartialEq for Attributes {
         self.doc_strings == rhs.doc_strings
             && self.cfg == rhs.cfg
             && self.span == rhs.span
-            && self.links == rhs.links
             && self
                 .other_attrs
                 .iter()
@@ -956,7 +953,6 @@ impl Hash for Attributes {
         self.doc_strings.hash(hasher);
         self.cfg.hash(hasher);
         self.span.hash(hasher);
-        self.links.hash(hasher);
         for attr in &self.other_attrs {
             attr.id.hash(hasher);
         }

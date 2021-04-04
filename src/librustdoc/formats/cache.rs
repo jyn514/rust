@@ -17,6 +17,7 @@ use crate::formats::Impl;
 use crate::html::markdown::short_markdown_summary;
 use crate::html::render::cache::{extern_location, get_index_search_type, ExternalLocation};
 use crate::html::render::IndexItem;
+use crate::passes::collect_intra_doc_links::EarlyIntraDocLink;
 
 /// This cache is used to store information about the [`clean::Crate`] being
 /// rendered in order to provide more useful documentation. This contains
@@ -124,6 +125,9 @@ crate struct Cache {
     /// Aliases added through `#[doc(alias = "...")]`. Since a few items can have the same alias,
     /// we need the alias element to have an array of items.
     crate aliases: BTreeMap<String, Vec<usize>>,
+
+    /// TODO: docs
+    crate intra_doc_links: FxHashMap<DefId, Vec<EarlyIntraDocLink>>,
 }
 
 /// This struct is used to wrap the `cache` and `tcx` in order to run `DocFolder`.

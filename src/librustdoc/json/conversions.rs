@@ -24,6 +24,12 @@ use std::collections::HashSet;
 impl JsonRenderer<'_> {
     pub(super) fn convert_item(&self, item: clean::Item) -> Option<Item> {
         let deprecation = item.deprecation(self.tcx);
+        let links = item
+            .resolved_links(&self.cache)
+            .filter_map(|clean::ItemLink { link, did, .. }| {
+                did.map(|did| (link.clone(), from_def_id(did)))
+            })
+            .collect();
         let clean::Item { span, name, attrs, kind, visibility, def_id } = item;
         let inner = match *kind {
             clean::StrippedItem(_) => return None,
@@ -36,13 +42,6 @@ impl JsonRenderer<'_> {
             span: self.convert_span(span),
             visibility: self.convert_visibility(visibility),
             docs: attrs.collapsed_doc_value(),
-            links: attrs
-                .links
-                .into_iter()
-                .filter_map(|clean::ItemLink { link, did, .. }| {
-                    did.map(|did| (link, from_def_id(did)))
-                })
-                .collect(),
             attrs: attrs
                 .other_attrs
                 .iter()
@@ -50,6 +49,7 @@ impl JsonRenderer<'_> {
                 .collect(),
             deprecation: deprecation.map(from_deprecation),
             inner,
+            links,
         })
     }
 
