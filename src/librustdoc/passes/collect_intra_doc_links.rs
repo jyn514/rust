@@ -534,10 +534,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                 }
             })?;
 
-        // FIXME: are these both necessary?
-        let ty_res = if let Some(ty_res) = resolve_primitive(&path_root, TypeNS)
-            .or_else(|| self.resolve_path(&path_root, TypeNS, module_id))
-        {
+        let ty_res = if let Some(ty_res) = self.resolve_path(&path_root, TypeNS, module_id) {
             ty_res
         } else {
             // FIXME: this is duplicated on the end of this function.
