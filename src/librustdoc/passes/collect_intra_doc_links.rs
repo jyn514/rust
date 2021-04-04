@@ -442,18 +442,18 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
     /// NOTE: `resolve_str_path_error` knows only about paths, not about types.
     /// Associated items will never be resolved by this function.
     fn resolve_path(&self, path_str: &str, ns: Namespace, module_id: DefId) -> Option<Res> {
-        let result = self.cx.enter_resolver(|resolver| {
-            resolver
-                .resolve_str_path_error(DUMMY_SP, &path_str, ns, module_id)
-                .and_then(|(_, res)| res.try_into())
+        // resolver doesn't know about true, false, and types that aren't paths (e.g. `()`)
+        // manually as bool. Give them precedence because the `doc(primitive)` check depends on it.
+        let result = resolve_primitive(path_str, ns).or_else(|| {
+            self.cx.enter_resolver(|resolver| {
+                resolver
+                    .resolve_str_path_error(DUMMY_SP, &path_str, ns, module_id)
+            })
+            .and_then(|(_, res)| res.try_into())
+            .ok()
         });
         debug!("{} resolved to {:?} in namespace {:?}", path_str, result, ns);
-        match result {
-            // resolver doesn't know about true, false, and types that aren't paths (e.g. `()`)
-            // manually as bool
-            Err(()) => resolve_primitive(path_str, ns),
-            Ok(res) => Some(res),
-        }
+        result
     }
 
     /// Resolves a string as a path within a particular namespace. Returns an
@@ -1075,29 +1075,35 @@ impl LinkCollector<'_, '_> {
         if matches!(
             disambiguator,
             None | Some(Disambiguator::Namespace(Namespace::TypeNS) | Disambiguator::Primitive)
-        ) && !matches!(res, Res::Primitive(_))
-        {
-            if let Some(prim) = resolve_primitive(path_str, TypeNS) {
-                // `prim@char`
-                if matches!(disambiguator, Some(Disambiguator::Primitive)) {
-                    if fragment.is_some() {
-                        anchor_failure(
-                            self.cx,
-                            &item,
-                            path_str,
-                            dox,
-                            ori_link.range,
-                            AnchorFailure::RustdocAnchorConflict(prim),
-                        );
-                        return None;
+        ) {
+            if let Res::Def(kind, id) = res {
+                if let Some(prim) = resolve_primitive(path_str, TypeNS) {
+                    // `prim@char`
+                    if matches!(disambiguator, Some(Disambiguator::Primitive)) {
+                        if fragment.is_some() {
+                            anchor_failure(
+                                self.cx,
+                                &item,
+                                path_str,
+                                dox,
+                                ori_link.range,
+                                AnchorFailure::RustdocAnchorConflict(prim),
+                            );
+                            return None;
+                        }
+                        res = prim;
+                        fragment = Some(prim.name(self.cx.tcx));
+                    } else {
+                        // `[char]` when a `char` module is in scope
+                        assert_eq!(kind, DefKind::Mod);
+                        // Very special case: when the mod has `doc(primitive)`, don't give an error.
+                        let mod_ = rustc_hir::def::Res::Def(DefKind::Mod, id);
+                        if crate::clean::parse_primitive(mod_, self.cx).is_none() {
+                            let candidates = vec![res, prim];
+                            ambiguity_error(self.cx, &item, path_str, dox, ori_link.range, candidates);
+                            return None;
+                        }
                     }
-                    res = prim;
-                    fragment = Some(prim.name(self.cx.tcx));
-                } else {
-                    // `[char]` when a `char` module is in scope
-                    let candidates = vec![res, prim];
-                    ambiguity_error(self.cx, &item, path_str, dox, ori_link.range, candidates);
-                    return None;
                 }
             }
         }

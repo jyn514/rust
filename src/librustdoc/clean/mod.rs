@@ -82,49 +82,51 @@ impl<T: Clean<U>, U> Clean<Option<U>> for Option<T> {
     }
 }
 
+// Collect all inner modules which are tagged as implementations of
+// primitives.
+//
+// Note that this loop only searches the top-level items of the crate,
+// and this is intentional. If we were to search the entire crate for an
+// item tagged with `#[doc(primitive)]` then we would also have to
+// search the entirety of external modules for items tagged
+// `#[doc(primitive)]`, which is a pretty inefficient process (decoding
+// all that metadata unconditionally).
+//
+// In order to keep the metadata load under control, the
+// `#[doc(primitive)]` feature is explicitly designed to only allow the
+// primitive tags to show up as the top level items in a crate.
+//
+// Also note that this does not attempt to deal with modules tagged
+// duplicately for the same primitive. This is handled later on when
+// rendering by delegating everything to a hash map.
+crate fn parse_primitive(res: Res, cx: &mut DocContext<'_>) -> Option<(DefId, PrimitiveType)> {
+    if let Res::Def(DefKind::Mod, def_id) = res {
+        let attrs = cx.tcx.get_attrs(def_id).clean(cx);
+        let mut prim = None;
+        for attr in attrs.lists(sym::doc) {
+            if let Some(v) = attr.value_str() {
+                if attr.has_name(sym::primitive) {
+                    prim = PrimitiveType::from_symbol(v);
+                    if prim.is_some() {
+                        break;
+                    }
+                    // FIXME: should warn on unknown primitives?
+                }
+            }
+        }
+        return prim.map(|p| (def_id, p));
+    }
+    None
+}
+
 impl Clean<ExternalCrate> for CrateNum {
     fn clean(&self, cx: &mut DocContext<'_>) -> ExternalCrate {
         let tcx = cx.tcx;
         let root = DefId { krate: *self, index: CRATE_DEF_INDEX };
         let krate_span = tcx.def_span(root);
         let krate_src = cx.sess().source_map().span_to_filename(krate_span);
+        let mut as_primitive = |p| parse_primitive(p, cx);
 
-        // Collect all inner modules which are tagged as implementations of
-        // primitives.
-        //
-        // Note that this loop only searches the top-level items of the crate,
-        // and this is intentional. If we were to search the entire crate for an
-        // item tagged with `#[doc(primitive)]` then we would also have to
-        // search the entirety of external modules for items tagged
-        // `#[doc(primitive)]`, which is a pretty inefficient process (decoding
-        // all that metadata unconditionally).
-        //
-        // In order to keep the metadata load under control, the
-        // `#[doc(primitive)]` feature is explicitly designed to only allow the
-        // primitive tags to show up as the top level items in a crate.
-        //
-        // Also note that this does not attempt to deal with modules tagged
-        // duplicately for the same primitive. This is handled later on when
-        // rendering by delegating everything to a hash map.
-        let mut as_primitive = |res: Res| {
-            if let Res::Def(DefKind::Mod, def_id) = res {
-                let attrs = cx.tcx.get_attrs(def_id).clean(cx);
-                let mut prim = None;
-                for attr in attrs.lists(sym::doc) {
-                    if let Some(v) = attr.value_str() {
-                        if attr.has_name(sym::primitive) {
-                            prim = PrimitiveType::from_symbol(v);
-                            if prim.is_some() {
-                                break;
-                            }
-                            // FIXME: should warn on unknown primitives?
-                        }
-                    }
-                }
-                return prim.map(|p| (def_id, p));
-            }
-            None
-        };
         let primitives = if root.is_local() {
             tcx.hir()
                 .krate()
