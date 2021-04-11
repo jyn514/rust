@@ -36,6 +36,7 @@ use crate::clean::{AttributesExt, TraitWithExtraInfo, MAX_DEF_IDX};
 use crate::config::{Options as RustdocOptions, OutputFormat, RenderOptions};
 use crate::formats::cache::Cache;
 use crate::passes::{self, Condition::*, ConditionalPass};
+use crate::passes::collect_intra_doc_links::UnresolvedLink;
 
 crate use rustc_session::config::{DebuggingOptions, Input, Options};
 
@@ -84,6 +85,8 @@ crate struct DocContext<'tcx> {
     crate inlined: FxHashSet<DefId>,
     /// Used by `calculate_doc_coverage`.
     crate output_format: OutputFormat,
+    /// Used to split the intra-doc pass in two: the first part using a resolver, the second using a tcx.
+    crate unresolved_links: FxHashMap<DefId, Vec<UnresolvedLink>>,
 }
 
 impl<'tcx> DocContext<'tcx> {
@@ -432,6 +435,7 @@ crate fn run_global_ctxt(
         inlined: FxHashSet::default(),
         output_format,
         render_options,
+        unresolved_links: FxHashMap::default(),
     };
 
     // Small hack to force the Sized trait to be present.

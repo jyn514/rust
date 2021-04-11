@@ -67,6 +67,20 @@ impl<'a> From<ResolutionFailure<'a>> for ErrorKind<'a> {
     }
 }
 
+crate struct UnresolvedLink {
+    /// The resolution for all path segments excluding the last.
+    ///
+    /// For example, in `[a::b::c]`, it will hold the Res for `a::b`.
+    /// This is used for `resolve_associated_item`.
+    ty_res: Res,
+    /// The resolution for all path segments excluding the last two.
+    ///
+    /// For example, in `[a::b::c]`, it will hold the Res for `a`.
+    /// This is used for `variant_field`.
+    variant_res: Option<Res>,
+    /* TODO */
+}
+
 #[derive(Copy, Clone, Debug, Hash)]
 enum Res {
     Def(DefKind, DefId),
