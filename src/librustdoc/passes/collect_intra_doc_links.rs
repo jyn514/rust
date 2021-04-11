@@ -67,12 +67,19 @@ impl<'a> From<ResolutionFailure<'a>> for ErrorKind<'a> {
     }
 }
 
+crate enum EarlyResult {
+    Resolved(Res, Option<String>),
+    Unresolved(UnresolvedLink),
+    UnresolvedVariant(Res),
+    Error(ErrorKind<'static>),
+}
+
 crate struct UnresolvedLink {
     /// The resolution for all path segments excluding the last.
     ///
     /// For example, in `[a::b::c]`, it will hold the Res for `a::b`.
     /// This is used for `resolve_associated_item`.
-    ty_res: Res,
+    ty_res: Option<Res>,
     /// The resolution for all path segments excluding the last two.
     ///
     /// For example, in `[a::b::c]`, it will hold the Res for `a`.
@@ -1124,27 +1131,6 @@ fn privacy_error(cx: &DocContext<'_>, diag_info: &DiagnosticInfo<'_>, path_str: 
         };
         diag.note(note_msg);
     });
-}
-
-/// Given an enum variant's res, return the res of its enum and the associated fragment.
-fn handle_variant(
-    cx: &DocContext<'_>,
-    res: Res,
-    extra_fragment: &Option<String>,
-) -> Result<(Res, Option<String>), ErrorKind<'static>> {
-    use rustc_middle::ty::DefIdTree;
-
-    if extra_fragment.is_some() {
-        return Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(res)));
-    }
-    cx.tcx
-        .parent(res.def_id())
-        .map(|parent| {
-            let parent_def = Res::Def(DefKind::Enum, parent);
-            let variant = cx.tcx.expect_variant_res(res.as_hir_res().unwrap());
-            (parent_def, Some(format!("variant.{}", variant.ident.name)))
-        })
-        .ok_or_else(|| ResolutionFailure::NoParentItem.into())
 }
 
 /// Resolve a primitive type or value.

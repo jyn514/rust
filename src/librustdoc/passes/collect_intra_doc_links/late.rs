@@ -179,26 +179,6 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
         })
     }
 
-    /// Convenience wrapper around `resolve_str_path_error`.
-    ///
-    /// This also handles resolving `true` and `false` as booleans.
-    /// NOTE: `resolve_str_path_error` knows only about paths, not about types.
-    /// Associated items will never be resolved by this function.
-    fn resolve_path(&self, path_str: &str, ns: Namespace, module_id: DefId) -> Option<Res> {
-        let result = self.cx.enter_resolver(|resolver| {
-            resolver
-                .resolve_str_path_error(DUMMY_SP, &path_str, ns, module_id)
-                .and_then(|(_, res)| res.try_into())
-        });
-        debug!("{} resolved to {:?} in namespace {:?}", path_str, result, ns);
-        match result {
-            // resolver doesn't know about true, false, and types that aren't paths (e.g. `()`)
-            // manually as bool
-            Err(()) => resolve_primitive(path_str, ns),
-            Ok(res) => Some(res),
-        }
-    }
-
     /// Resolves a string as a path within a particular namespace. Returns an
     /// optional URL fragment in the case of variants and methods.
     fn resolve<'path>(
@@ -990,4 +970,25 @@ impl LinkCollector<'_, '_> {
             }
         }
     }
+}
+
+/// Given an enum variant's res, return the res of its enum and the associated fragment.
+fn handle_variant(
+    cx: &DocContext<'_>,
+    res: Res,
+    extra_fragment: &Option<String>,
+) -> Result<(Res, Option<String>), ErrorKind<'static>> {
+    use rustc_middle::ty::DefIdTree;
+
+    if extra_fragment.is_some() {
+        return Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(res)));
+    }
+    cx.tcx
+        .parent(res.def_id())
+        .map(|parent| {
+            let parent_def = Res::Def(DefKind::Enum, parent);
+            let variant = cx.tcx.expect_variant_res(res.as_hir_res().unwrap());
+            (parent_def, Some(format!("variant.{}", variant.ident.name)))
+        })
+        .ok_or_else(|| ResolutionFailure::NoParentItem.into())
 }
