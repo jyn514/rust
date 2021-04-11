@@ -77,14 +77,14 @@ crate enum EarlyResult {
 crate struct UnresolvedLink {
     /// The resolution for all path segments excluding the last.
     ///
-    /// For example, in `[a::b::c]`, it will hold the Res for `a::b`.
+    /// For example, in `[a::b::c]`, it will hold the Res for `a::b` and the `Symbol` for `c`.
     /// This is used for `resolve_associated_item`.
-    ty_res: Option<Res>,
+    ty_res: Option<(Res, Symbol)>,
     /// The resolution for all path segments excluding the last two.
     ///
-    /// For example, in `[a::b::c]`, it will hold the Res for `a`.
+    /// For example, in `[a::b::c]`, it will hold the Res for `a`, and the `Symbol`s for `b` and `c`.
     /// This is used for `variant_field`.
-    variant_res: Option<Res>,
+    variant_res: Option<(Res, Symbol, Symbol)>,
     /* TODO */
 }
 

@@ -34,42 +34,12 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
     /// [enum struct variant]: hir::VariantData::Struct
     fn variant_field(
         &self,
-        path_str: &'path str,
-        module_id: DefId,
-    ) -> Result<(Res, Option<String>), ErrorKind<'path>> {
+        (variant_res, variant_name, variant_field_name): (Res, Symbol, Symbol),
+		module_id: DefId,
+    ) -> Result<(Res, String), ErrorKind<'path>> {
         let tcx = self.cx.tcx;
-        let no_res = || ResolutionFailure::NotResolved {
-            module_id,
-            partial_res: None,
-            unresolved: path_str.into(),
-        };
 
-        debug!("looking for enum variant {}", path_str);
-        let mut split = path_str.rsplitn(3, "::");
-        let (variant_field_str, variant_field_name) = split
-            .next()
-            .map(|f| (f, Symbol::intern(f)))
-            .expect("fold_item should ensure link is non-empty");
-        let (variant_str, variant_name) =
-            // we're not sure this is a variant at all, so use the full string
-            // If there's no second component, the link looks like `[path]`.
-            // So there's no partial res and we should say the whole link failed to resolve.
-            split.next().map(|f| (f, Symbol::intern(f))).ok_or_else(no_res)?;
-        let path = split
-            .next()
-            .map(|f| f.to_owned())
-            // If there's no third component, we saw `[a::b]` before and it failed to resolve.
-            // So there's no partial res.
-            .ok_or_else(no_res)?;
-        let ty_res = self
-            .cx
-            .enter_resolver(|resolver| {
-                resolver.resolve_str_path_error(DUMMY_SP, &path, TypeNS, module_id)
-            })
-            .and_then(|(_, res)| res.try_into())
-            .map_err(|()| no_res())?;
-
-        match ty_res {
+        match variant_res {
             Res::Def(DefKind::Enum, did) => {
                 if tcx
                     .inherent_impls(did)
@@ -85,17 +55,17 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     ty::Adt(def, _) if def.is_enum() => {
                         if def.all_fields().any(|item| item.ident.name == variant_field_name) {
                             Ok((
-                                ty_res,
-                                Some(format!(
+                                variant_res,
+                                format!(
                                     "variant.{}.field.{}",
-                                    variant_str, variant_field_name
-                                )),
+                                    variant_name, variant_field_name
+                                ),
                             ))
                         } else {
                             Err(ResolutionFailure::NotResolved {
                                 module_id,
                                 partial_res: Some(Res::Def(DefKind::Enum, def.did)),
-                                unresolved: variant_field_str.into(),
+                                unresolved: variant_field_name.into(),
                             }
                             .into())
                         }
@@ -105,8 +75,8 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             }
             _ => Err(ResolutionFailure::NotResolved {
                 module_id,
-                partial_res: Some(ty_res),
-                unresolved: variant_str.into(),
+                partial_res: Some(variant_res),
+                unresolved: variant_name.into(),
             }
             .into()),
         }
@@ -183,88 +153,47 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
     /// optional URL fragment in the case of variants and methods.
     fn resolve<'path>(
         &mut self,
-        path_str: &'path str,
+        early_result: EarlyResult,
+		path_str: &'path str,
         ns: Namespace,
         module_id: DefId,
         extra_fragment: &Option<String>,
     ) -> Result<(Res, Option<String>), ErrorKind<'path>> {
-        if let Some(res) = self.resolve_path(path_str, ns, module_id) {
-            match res {
-                // FIXME(#76467): make this fallthrough to lookup the associated
-                // item a separate function.
-                Res::Def(DefKind::AssocFn | DefKind::AssocConst, _) => assert_eq!(ns, ValueNS),
-                Res::Def(DefKind::AssocTy, _) => assert_eq!(ns, TypeNS),
-                Res::Def(DefKind::Variant, _) => {
-                    return handle_variant(self.cx, res, extra_fragment);
-                }
-                // Not a trait item; just return what we found.
-                Res::Primitive(ty) => {
-                    if extra_fragment.is_some() {
-                        return Err(ErrorKind::AnchorFailure(
-                            AnchorFailure::RustdocAnchorConflict(res),
-                        ));
-                    }
-                    return Ok((res, Some(ty.as_str().to_owned())));
-                }
-                _ => return Ok((res, extra_fragment.clone())),
-            }
-        }
+		use EarlyResult::*;
+		let link = match early_result {
+			// easy cases
+			Resolved(res, fragment) => return Ok((res, fragment)),
+			Error(err) => return Err(err),
+			// the actual work
+			UnresolvedVariant(res) => return handle_variant(self.cx, res, extra_fragment),
+			Unresolved(link) => link,
+		};
 
-        // Try looking for methods and associated items.
-        let mut split = path_str.rsplitn(2, "::");
-        // NB: `split`'s first element is always defined, even if the delimiter was not present.
-        // NB: `item_str` could be empty when resolving in the root namespace (e.g. `::std`).
-        let item_str = split.next().unwrap();
-        let item_name = Symbol::intern(item_str);
-        let path_root = split
-            .next()
-            .map(|f| f.to_owned())
-            // If there's no `::`, it's not an associated item.
-            // So we can be sure that `rustc_resolve` was accurate when it said it wasn't resolved.
-            .ok_or_else(|| {
-                debug!("found no `::`, assumming {} was correctly not in scope", item_name);
-                ResolutionFailure::NotResolved {
-                    module_id,
-                    partial_res: None,
-                    unresolved: item_str.into(),
-                }
-            })?;
-
-        // FIXME(#83862): this arbitrarily gives precedence to primitives over modules to support
-        // links to primitives when `#[doc(primitive)]` is present. It should give an ambiguity
-        // error instead and special case *only* modules with `#[doc(primitive)]`, not all
-        // primitives.
-        resolve_primitive(&path_root, TypeNS)
-            .or_else(|| self.resolve_path(&path_root, TypeNS, module_id))
-            .and_then(|ty_res| {
-                let (res, fragment, side_channel) =
-                    self.resolve_associated_item(ty_res, item_name, ns, module_id)?;
-                let result = if extra_fragment.is_some() {
-                    let diag_res = side_channel.map_or(res, |(k, r)| Res::Def(k, r));
-                    Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(diag_res)))
-                } else {
-                    // HACK(jynelson): `clean` expects the type, not the associated item
-                    // but the disambiguator logic expects the associated item.
-                    // Store the kind in a side channel so that only the disambiguator logic looks at it.
-                    if let Some((kind, id)) = side_channel {
-                        self.kind_side_channel.set(Some((kind, id)));
-                    }
-                    Ok((res, Some(fragment)))
-                };
-                Some(result)
-            })
-            .unwrap_or_else(|| {
-                if ns == Namespace::ValueNS {
-                    self.variant_field(path_str, module_id)
-                } else {
-                    Err(ResolutionFailure::NotResolved {
-                        module_id,
-                        partial_res: None,
-                        unresolved: path_root.into(),
-                    }
-                    .into())
-                }
-            })
+		if let Some((res, fragment, side_channel)) = link.ty_res.and_then(|(ty_res, item_name)| {
+			self.resolve_associated_item(ty_res, item_name, ns, module_id)
+		}) {
+			if extra_fragment.is_some() {
+				let diag_res = side_channel.map_or(res, |(k, r)| Res::Def(k, r));
+				Err(ErrorKind::AnchorFailure(AnchorFailure::RustdocAnchorConflict(diag_res)))
+			} else {
+				// HACK(jynelson): `clean` expects the type, not the associated item
+				// but the disambiguator logic expects the associated item.
+				// Store the kind in a side channel so that only the disambiguator logic looks at it.
+				if let Some((kind, id)) = side_channel {
+					self.kind_side_channel.set(Some((kind, id)));
+				}
+				Ok((res, Some(fragment)))
+			}
+		} else if let Some(variant_res) = link.variant_res {
+			debug_assert_eq!(ns, ValueNS);
+			self.variant_field(variant_res, module_id).map(|(res, fragment)| (res, Some(fragment)))
+		} else {
+			Err(ResolutionFailure::NotResolved {
+				module_id,
+				partial_res: None,
+				unresolved: path_str.into(),
+			}.into())
+		}
     }
 
     /// Returns:

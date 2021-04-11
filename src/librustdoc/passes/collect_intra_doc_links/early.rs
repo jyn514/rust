@@ -110,7 +110,8 @@ impl IntraLinkCrateLoader {
         // error instead and special case *only* modules with `#[doc(primitive)]`, not all
         // primitives.
         let ty_res = resolve_primitive(&path_root, TypeNS)
-            .or_else(|| self.resolve_path(&path_root, TypeNS, module_id));
+            .or_else(|| self.resolve_path(&path_root, TypeNS, module_id))
+			.map(|res| (res, item_name));
 		let variant_res = if ns == Namespace::ValueNS {
 			self.variant_res(path_str, module_id)
 		} else {
@@ -121,7 +122,7 @@ impl IntraLinkCrateLoader {
 		})
 	}
 
-	fn variant_res(&self, path_str: &str, module_id: DefId) -> Option<Res> {
+	fn variant_res(&self, path_str: &str, module_id: DefId) -> Option<(Res, Symbol, Symbol)> {
 		debug!("looking for enum variant {}", path_str);
 		let mut split = path_str.rsplitn(3, "::");
 		let (variant_field_str, variant_field_name) = split
@@ -131,15 +132,15 @@ impl IntraLinkCrateLoader {
 		// we're not sure this is a variant at all, so use the full string
 		// If there's no second component, the link looks like `[path]`.
 		// So there's no partial res and we should say the whole link failed to resolve.
-		let variant_str = split.next()?;
-		let variant_name = Symbol::intern(variant_str);
+		let variant_name = Symbol::intern(split.next()?);
 		let path = split.next()?.to_owned();
-		self
+		let variant_res = self
 			.enter_resolver(|resolver| {
 				resolver.resolve_str_path_error(DUMMY_SP, &path, TypeNS, module_id)
 			})
 			.and_then(|(_, res)| res.try_into())
-			.ok()
+			.ok()?;
+		Some((variant_res, variant_name, variant_field_name))
 	}
 }
 
