@@ -388,10 +388,10 @@ fn is_derive_trait_collision<T>(ns: &PerNS<Result<(Res, T), ResolutionFailure<'_
     )
 }
 
-enum PreprocessingError<'a> {
+enum LinkError {
     Anchor(AnchorFailure),
     Disambiguator(Range<usize>, String),
-    Resolution(ResolutionFailure<'a>, String, Option<Disambiguator>),
+    Resolution(ResolutionFailure<'static>, String, Option<Disambiguator>),
     Ambiguous(Vec<Res>, String),
     DisambiguatorMismatch {
         specified: Disambiguator,
@@ -400,7 +400,7 @@ enum PreprocessingError<'a> {
     }
 }
 
-impl From<AnchorFailure> for PreprocessingError<'_> {
+impl From<AnchorFailure> for LinkError {
     fn from(err: AnchorFailure) -> Self {
         Self::Anchor(err)
     }
@@ -421,7 +421,7 @@ struct PreprocessingInfo {
 /// `link_buffer` is needed for lifetime reasons; it will always be overwritten and the contents ignored.
 fn preprocess_link<'a>(
     ori_link: &'a MarkdownLink,
-) -> Option<Result<PreprocessingInfo, PreprocessingError<'static>>> {
+) -> Option<Result<PreprocessingInfo, LinkError>> {
     // [] is mostly likely not supposed to be a link
     if ori_link.link.is_empty() {
         return None;
@@ -456,7 +456,7 @@ fn preprocess_link<'a>(
                 let no_backticks_range = range_between_backticks(&ori_link);
                 let disambiguator_range = (no_backticks_range.start + relative_range.start)
                     ..(no_backticks_range.start + relative_range.end);
-                return Some(Err(PreprocessingError::Disambiguator(disambiguator_range, err_msg)));
+                return Some(Err(LinkError::Disambiguator(disambiguator_range, err_msg)));
             } else {
                 return None;
             }
@@ -478,7 +478,7 @@ fn preprocess_link<'a>(
             Ok(path) => path,
             Err(err_kind) => {
                 debug!("link has malformed generics: {}", path_str);
-                return Some(Err(PreprocessingError::Resolution(
+                return Some(Err(LinkError::Resolution(
                     err_kind,
                     path_str.to_owned(),
                     disambiguator,

@@ -29,7 +29,7 @@ crate struct IntraLinkCrateLoader {
     kind_side_channel: Cell<Option<(DefKind, DefId)>>,
     /// Cache the resolved links so we can avoid resolving (and emitting errors for) the same link.
     /// The link will be `None` if it could not be resolved (i.e. the error was cached).
-    visited_links: FxHashMap<ResolutionInfo, Result<CachedLink, PreprocessingError<'static>>>,
+    visited_links: FxHashMap<ResolutionInfo, Result<CachedLink, LinkError>>,
 }
 
 impl IntraLinkCrateLoader {
@@ -284,7 +284,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> Option<Result<ItemLink, PreprocessingError<'static>>> {
+    ) -> Option<Result<ItemLink, LinkError>> {
         trace!("considering link '{}'", ori_link.link);
 
         let diag_info = DiagnosticInfo {
@@ -308,7 +308,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> Result<ItemLink, PreprocessingError<'static>> {
+    ) -> Result<ItemLink, LinkError> {
             //     Ok(x) => x,
             //     Err(err) => {
             //         match err {
@@ -354,7 +354,7 @@ impl IntraLinkCrateLoader {
         } else {
             // This is a bug.
             debug!("attempting to resolve item without parent module: {}", path_str);
-            return Err(PreprocessingError::Resolution(
+            return Err(LinkError::Resolution(
                 ResolutionFailure::NoParentItem,
                 path_str.to_string(),
                 disambiguator,
@@ -415,20 +415,20 @@ impl IntraLinkCrateLoader {
                 // `prim@char`
                 if matches!(disambiguator, Some(Disambiguator::Primitive)) {
                     if fragment.is_some() {
-                        return Err(PreprocessingError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into())));
+                        return Err(LinkError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into())));
                     }
                     res = prim.into();
                     fragment = Some(prim.as_str().to_string());
                 } else {
                     // `[char]` when a `char` module is in scope
                     let candidates = vec![res, prim.into()];
-                    return Err(PreprocessingError::Ambiguous(candidates, path_str.to_string()));
+                    return Err(LinkError::Ambiguous(candidates, path_str.to_string()));
                 }
             }
         }
 
         let report_mismatch = |specified: Disambiguator, resolved: Disambiguator| {
-            PreprocessingError::DisambiguatorMismatch{
+            LinkError::DisambiguatorMismatch{
                 specified,
                 resolved,
             }
@@ -510,7 +510,7 @@ impl IntraLinkCrateLoader {
         key: ResolutionInfo,
         diag: DiagnosticInfo<'_>,
         cache_resolution_failure: bool,
-    ) -> Result<(Res, Option<String>), PreprocessingError<'static>> {
+    ) -> Result<(Res, Option<String>), LinkError> {
         // Try to look up both the result and the corresponding side channel value
         if let Some(ref cached) = self.visited_links.get(&key) {
             match cached {
@@ -518,7 +518,7 @@ impl IntraLinkCrateLoader {
                     self.kind_side_channel.set(cached.side_channel.clone());
                     return Ok(cached.res.clone());
                 }
-                Err(err) if cache_resolution_failure => return Err(err),
+                Err(err) if cache_resolution_failure => return Err(err.clone()),
                 Err(_) => {
                     // Although we hit the cache and found a resolution error, this link isn't
                     // supposed to cache those. Run link resolution again to emit the expected
