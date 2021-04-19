@@ -29,7 +29,7 @@ crate struct IntraLinkCrateLoader {
     kind_side_channel: Cell<Option<(DefKind, DefId)>>,
     /// Cache the resolved links so we can avoid resolving (and emitting errors for) the same link.
     /// The link will be `None` if it could not be resolved (i.e. the error was cached).
-    visited_links: FxHashMap<ResolutionInfo, Option<CachedLink>>,
+    visited_links: FxHashMap<ResolutionInfo, Result<CachedLink, PreprocessingError<'static>>>,
 }
 
 impl IntraLinkCrateLoader {
@@ -294,11 +294,21 @@ impl IntraLinkCrateLoader {
             link_range: ori_link.range.clone(),
         };
 
-        let PreprocessingInfo { path_str, disambiguator, extra_fragment, link_text } =
-            match preprocess_link(&ori_link)? {
-                Ok(x) => x,
-                Err(err) => return Some(Err(err)),
-            };
+        match preprocess_link(&ori_link)? {
+            Ok(x) => Some(self.resolve_link_inner(diag_info, x, dox, self_name, parent_node, krate, ori_link)),
+            Err(err) => return Some(Err(err)),
+        }
+    }
+
+    /// Helper so this function can use `?` for errors.
+    fn resolve_link_inner(&mut self, diag_info: DiagnosticInfo,
+        PreprocessingInfo { path_str, disambiguator, extra_fragment, link_text }: PreprocessingInfo,
+        dox: &str,
+        self_name: &Option<String>,
+        parent_node: Option<DefId>,
+        krate: CrateNum,
+        ori_link: MarkdownLink,
+    ) -> Result<ItemLink, PreprocessingError<'static>> {
             //     Ok(x) => x,
             //     Err(err) => {
             //         match err {
@@ -320,6 +330,7 @@ impl IntraLinkCrateLoader {
             //     }
             // };
         let mut path_str = &*path_str;
+        let item = &diag_info.item;
 
         // In order to correctly resolve intra-doc links we need to
         // pick a base AST node to work from.  If the documentation for
@@ -343,11 +354,11 @@ impl IntraLinkCrateLoader {
         } else {
             // This is a bug.
             debug!("attempting to resolve item without parent module: {}", path_str);
-            return Some(Err(PreprocessingError::Resolution(
+            return Err(PreprocessingError::Resolution(
                 ResolutionFailure::NoParentItem,
                 path_str.to_string(),
                 disambiguator,
-            )));
+            ));
         };
 
         let resolved_self;
@@ -404,23 +415,23 @@ impl IntraLinkCrateLoader {
                 // `prim@char`
                 if matches!(disambiguator, Some(Disambiguator::Primitive)) {
                     if fragment.is_some() {
-                        return Some(Err(PreprocessingError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into()))));
+                        return Err(PreprocessingError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into())));
                     }
                     res = prim.into();
                     fragment = Some(prim.as_str().to_string());
                 } else {
                     // `[char]` when a `char` module is in scope
                     let candidates = vec![res, prim.into()];
-                    return Some(Err(PreprocessingError::Ambiguous(candidates, path_str.to_string())));
+                    return Err(PreprocessingError::Ambiguous(candidates, path_str.to_string()));
                 }
             }
         }
 
         let report_mismatch = |specified: Disambiguator, resolved: Disambiguator| {
-            Some(Err(PreprocessingError::DisambiguatorMismatch{
+            PreprocessingError::DisambiguatorMismatch{
                 specified,
                 resolved,
-            }))
+            }
         }; 
         //     // The resolved item did not match the disambiguator; give a better error than 'not found'
         //     let msg = format!("incompatible link kind for `{}`", path_str);
@@ -457,42 +468,41 @@ impl IntraLinkCrateLoader {
                 => {}
                 (actual, Some(Disambiguator::Kind(expected))) if actual == expected => {}
                 (_, Some(specified @ Disambiguator::Kind(_) | specified @ Disambiguator::Primitive)) => {
-                    return report_mismatch(specified, Disambiguator::Kind(kind));
+                    return Err(report_mismatch(specified, Disambiguator::Kind(kind)));
                 }
             }
 
-            Some(Ok(()))
+            Ok(())
         };
 
         let did = match res {
             Res::Primitive(prim) => {
                 if let Some((kind, id)) = self.kind_side_channel.take() {
-                    // We're actually resolving an associated item of a primitive, so we need to
-                    // verify the disambiguator (if any) matches the type of the associated item.
-                    // This case should really follow the same flow as the `Res::Def` branch below,
-                    // but attempting to add a call to `clean::register_res` causes an ICE. @jyn514
-                    // thinks `register_res` is only needed for cross-crate re-exports, but Rust
-                    // doesn't allow statements like `use str::trim;`, making this a (hopefully)
-                    // valid omission. See https://github.com/rust-lang/rust/pull/80660#discussion_r551585677
-                    // for discussion on the matter.
-                    // TODO: something is up with the error handling here
                     verify(kind, id)?;
                 } else {
                     match disambiguator {
                         Some(Disambiguator::Primitive | Disambiguator::Namespace(_)) | None => {}
                         Some(other) => {
-                            return report_mismatch(other, Disambiguator::Primitive);
+                            return Err(report_mismatch(other, Disambiguator::Primitive));
                         }
                     }
                 }
+                // We're actually resolving an associated item of a primitive, so we need to
+                // verify the disambiguator (if any) matches the type of the associated item.
+                // This case should really follow the same flow as the `Res::Def` branch below,
+                // but attempting to add a call to `clean::register_res` causes an ICE. @jyn514
+                // thinks `register_res` is only needed for cross-crate re-exports, but Rust
+                // doesn't allow statements like `use str::trim;`, making this a (hopefully)
+                // valid omission. See https://github.com/rust-lang/rust/pull/80660#discussion_r551585677
+                // for discussion on the matter.
                 None
             }
             Res::Def(kind, id) => {
                 verify(kind, id)?;
-                Some(clean::register_res(self.cx, rustc_hir::def::Res::Def(kind, id)))
+                Some(id)
             }
         };
-        Some(Ok(ItemLink { link: ori_link.link, link_text, did, fragment }))
+        Ok(ItemLink { link: ori_link.link, link_text, did, fragment })
     }
 
     fn resolve_with_disambiguator_cached(
@@ -500,16 +510,16 @@ impl IntraLinkCrateLoader {
         key: ResolutionInfo,
         diag: DiagnosticInfo<'_>,
         cache_resolution_failure: bool,
-    ) -> Option<(Res, Option<String>)> {
+    ) -> Result<(Res, Option<String>), PreprocessingError<'static>> {
         // Try to look up both the result and the corresponding side channel value
         if let Some(ref cached) = self.visited_links.get(&key) {
             match cached {
-                Some(cached) => {
+                Ok(cached) => {
                     self.kind_side_channel.set(cached.side_channel.clone());
-                    return Some(cached.res.clone());
+                    return Ok(cached.res.clone());
                 }
-                None if cache_resolution_failure => return None,
-                None => {
+                Err(err) if cache_resolution_failure => return Err(err),
+                Err(_) => {
                     // Although we hit the cache and found a resolution error, this link isn't
                     // supposed to cache those. Run link resolution again to emit the expected
                     // resolution error.

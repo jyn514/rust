@@ -144,6 +144,10 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
                 // }
 
                 if let Some(link) = link {
+                    if let Some(id) = link.def_id {
+                        let res = rustc_hir::def::Res::Def(self.cx.tcx.def_kind(id), id);
+                        clean::register_res(self.cx, res);
+                    }
                     self.cx.cache.intra_doc_links.entry(item.def_id).or_default().push(link);
                 }
             }
