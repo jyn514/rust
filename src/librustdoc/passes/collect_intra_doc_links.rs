@@ -409,7 +409,7 @@ struct PreprocessingInfo {
 /// `link_buffer` is needed for lifetime reasons; it will always be overwritten and the contents ignored.
 fn preprocess_link<'a>(
     ori_link: &'a MarkdownLink,
-) -> Option<Result<PreprocessingInfo, PreprocessingError<'a>>> {
+) -> Option<Result<PreprocessingInfo, PreprocessingError<'static>>> {
     // [] is mostly likely not supposed to be a link
     if ori_link.link.is_empty() {
         return None;
