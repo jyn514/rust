@@ -2,7 +2,6 @@
 //!
 //! [RFC 1946]: https://github.com/rust-lang/rfcs/blob/master/text/1946-intra-rustdoc-links.md
 
-use rustc_ast as ast;
 use rustc_data_structures::{fx::FxHashMap, stable_set::FxHashSet};
 use rustc_errors::{Applicability, DiagnosticBuilder};
 use rustc_expand::base::SyntaxExtensionKind;
@@ -18,7 +17,7 @@ use rustc_middle::{bug, ty};
 use rustc_resolve::ParentScope;
 use rustc_session::lint::Lint;
 use rustc_span::hygiene::{MacroKind, SyntaxContext};
-use rustc_span::symbol::{sym, Ident, Symbol};
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::DUMMY_SP;
 use smallvec::{smallvec, SmallVec};
 
@@ -160,7 +159,7 @@ impl TryFrom<ResolveRes> for Res {
 }
 
 /// A link failed to resolve.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum ResolutionFailure<'a> {
     /// This resolved, but with the wrong namespace.
     WrongNamespace {
@@ -198,7 +197,7 @@ enum ResolutionFailure<'a> {
     Dummy,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum MalformedGenerics {
     /// This link has unbalanced angle brackets.
     ///
@@ -251,6 +250,7 @@ impl ResolutionFailure<'a> {
     }
 }
 
+#[derive(Clone)]
 enum AnchorFailure {
     /// User error: `[std#x#y]` is not valid
     MultipleAnchors,
@@ -390,6 +390,7 @@ fn is_derive_trait_collision<T>(ns: &PerNS<Result<(Res, T), ResolutionFailure<'_
 
 type LinkResult<T> = std::result::Result<T, LinkError>;
 
+#[derive(Clone)]
 enum LinkError {
     Anchor(AnchorFailure),
     Disambiguator(Range<usize>, String),

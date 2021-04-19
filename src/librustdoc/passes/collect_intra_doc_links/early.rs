@@ -301,7 +301,7 @@ impl IntraLinkCrateLoader {
     }
 
     /// Helper so this function can use `?` for errors.
-    fn resolve_link_inner(&mut self, diag_info: DiagnosticInfo,
+    fn resolve_link_inner(&mut self, diag_info: DiagnosticInfo<'_>,
         PreprocessingInfo { path_str, disambiguator, extra_fragment, link_text }: PreprocessingInfo,
         dox: &str,
         self_name: &Option<String>,
@@ -375,8 +375,6 @@ impl IntraLinkCrateLoader {
                 }
             }
         } else if path_str.starts_with("crate::") || is_lone_crate {
-            use rustc_span::def_id::CRATE_DEF_INDEX;
-
             // HACK(jynelson): rustc_resolve thinks that `crate` is the crate currently being documented.
             // But rustdoc wants it to mean the crate this item was originally present in.
             // To work around this, remove it and resolve relative to the crate root instead.
