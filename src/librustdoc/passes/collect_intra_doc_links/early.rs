@@ -29,7 +29,7 @@ crate struct IntraLinkCrateLoader {
     kind_side_channel: Cell<Option<(DefKind, DefId)>>,
     /// Cache the resolved links so we can avoid resolving (and emitting errors for) the same link.
     /// The link will be `None` if it could not be resolved (i.e. the error was cached).
-    visited_links: FxHashMap<ResolutionInfo, Result<CachedLink, LinkError>>,
+    visited_links: FxHashMap<ResolutionInfo, LinkResult<CachedLink>>,
 }
 
 impl IntraLinkCrateLoader {
@@ -284,7 +284,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> Option<Result<ItemLink, LinkError>> {
+    ) -> Option<LinkResult<ItemLink>> {
         trace!("considering link '{}'", ori_link.link);
 
         let diag_info = DiagnosticInfo {
@@ -308,7 +308,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> Result<ItemLink, LinkError> {
+    ) -> LinkResult<ItemLink> {
             //     Ok(x) => x,
             //     Err(err) => {
             //         match err {
@@ -510,7 +510,7 @@ impl IntraLinkCrateLoader {
         key: ResolutionInfo,
         diag: DiagnosticInfo<'_>,
         cache_resolution_failure: bool,
-    ) -> Result<(Res, Option<String>), LinkError> {
+    ) -> LinkResult<(Res, Option<String>)> {
         // Try to look up both the result and the corresponding side channel value
         if let Some(ref cached) = self.visited_links.get(&key) {
             match cached {

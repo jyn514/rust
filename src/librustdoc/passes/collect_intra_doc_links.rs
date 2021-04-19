@@ -388,6 +388,8 @@ fn is_derive_trait_collision<T>(ns: &PerNS<Result<(Res, T), ResolutionFailure<'_
     )
 }
 
+type LinkResult<T> = std::result::Result<T, LinkError>;
+
 enum LinkError {
     Anchor(AnchorFailure),
     Disambiguator(Range<usize>, String),
@@ -421,7 +423,7 @@ struct PreprocessingInfo {
 /// `link_buffer` is needed for lifetime reasons; it will always be overwritten and the contents ignored.
 fn preprocess_link<'a>(
     ori_link: &'a MarkdownLink,
-) -> Option<Result<PreprocessingInfo, LinkError>> {
+) -> Option<LinkResult<PreprocessingInfo>> {
     // [] is mostly likely not supposed to be a link
     if ori_link.link.is_empty() {
         return None;
