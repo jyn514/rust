@@ -101,6 +101,48 @@ impl<'a, 'tcx> DocFolder for LinkCollector<'a, 'tcx> {
             // This is a degenerate case and it's not supported by rustdoc.
             for md_link in markdown_links(&doc) {
                 let link = self.resolve_link(&item, &doc, &self_name, parent_node, krate, md_link);
+
+                // // item can be non-local e.g. when using #[doc(primitive = "pointer")]
+                // if let Some((src_id, dst_id)) = id
+                //     .as_local()
+                //     .and_then(|dst_id| item.def_id.as_local().map(|src_id| (src_id, dst_id)))
+                // {
+                //     use rustc_hir::def_id::LOCAL_CRATE;
+
+                //     let hir_src = self.cx.tcx.hir().local_def_id_to_hir_id(src_id);
+                //     let hir_dst = self.cx.tcx.hir().local_def_id_to_hir_id(dst_id);
+
+                //     if self.cx.tcx.privacy_access_levels(LOCAL_CRATE).is_exported(hir_src)
+                //         && !self.cx.tcx.privacy_access_levels(LOCAL_CRATE).is_exported(hir_dst)
+                //     {
+                //         privacy_error(self.cx, &diag_info, &path_str);
+                //     }
+                // }
+
+                // // FIXME: it would be nice to check that the feature gate was enabled in the original crate, not just ignore it altogether.
+                // // However I'm not sure how to check that across crates.
+                // if prim == PrimitiveType::RawPointer
+                //     && item.def_id.is_local()
+                //     && !self.cx.tcx.features().intra_doc_pointers
+                // {
+                //     let span = crate::passes::source_span_for_markdown_range(
+                //         self.cx.tcx,
+                //         dox,
+                //         &ori_link.range,
+                //         &item.attrs,
+                //     )
+                //     .unwrap_or_else(|| span_of_attrs(&item.attrs).unwrap_or(item.span.inner()));
+
+                //     rustc_session::parse::feature_err(
+                //         &self.cx.tcx.sess.parse_sess,
+                //         sym::intra_doc_pointers,
+                //         span,
+                //         "linking to associated items of raw pointers is experimental",
+                //     )
+                //     .note("rustdoc does not allow disambiguating between `*const` and `*mut`, and pointers are unstable until it does")
+                //     .emit();
+                // }
+
                 if let Some(link) = link {
                     self.cx.cache.intra_doc_links.entry(item.def_id).or_default().push(link);
                 }

@@ -94,6 +94,12 @@ enum Res {
     Primitive(PrimitiveType),
 }
 
+impl From<PrimitiveType> for Res {
+    fn from(prim: PrimitiveType) -> Self {
+        Self::Primitive(prim)
+    }
+}
+
 type ResolveRes = rustc_hir::def::Res<rustc_ast::NodeId>;
 
 impl Res {
@@ -386,6 +392,12 @@ enum PreprocessingError<'a> {
     Anchor(AnchorFailure),
     Disambiguator(Range<usize>, String),
     Resolution(ResolutionFailure<'a>, String, Option<Disambiguator>),
+    Ambiguous(Vec<Res>, String),
+    DisambiguatorMismatch {
+        specified: Disambiguator,
+        resolved: Disambiguator,
+        //path_str: String,
+    }
 }
 
 impl From<AnchorFailure> for PreprocessingError<'_> {
@@ -1134,7 +1146,7 @@ fn privacy_error(cx: &DocContext<'_>, diag_info: &DiagnosticInfo<'_>, path_str: 
 }
 
 /// Resolve a primitive type or value.
-fn resolve_primitive(path_str: &str, ns: Namespace) -> Option<Res> {
+fn resolve_primitive(path_str: &str, ns: Namespace) -> Option<PrimitiveType> {
     if ns != TypeNS {
         return None;
     }
@@ -1169,7 +1181,7 @@ fn resolve_primitive(path_str: &str, ns: Namespace) -> Option<Res> {
         _ => return None,
     };
     debug!("resolved primitives {:?}", prim);
-    Some(Res::Primitive(prim))
+    Some(prim)
 }
 
 fn strip_generics_from_path(path_str: &str) -> Result<String, ResolutionFailure<'static>> {

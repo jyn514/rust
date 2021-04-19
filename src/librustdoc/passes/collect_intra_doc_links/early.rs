@@ -103,7 +103,7 @@ impl IntraLinkCrateLoader {
         match result {
             // resolver doesn't know about true, false, and types that aren't paths (e.g. `()`)
             // manually as bool
-            Err(()) => resolve_primitive(path_str, ns),
+            Err(()) => resolve_primitive(path_str, ns).map(Into::into),
             Ok(res) => Some(res),
         }
     }
@@ -130,7 +130,7 @@ impl IntraLinkCrateLoader {
                 Res::Primitive(ty) => {
                     if extra_fragment.is_some() {
                         return EarlyResult::Error(ErrorKind::AnchorFailure(
-                            AnchorFailure::RustdocAnchorConflict(res),
+                            AnchorFailure::RustdocAnchorConflict(res.into()),
                         ));
                     }
                     return EarlyResult::Resolved(res, Some(ty.as_str().to_owned()));
@@ -164,6 +164,7 @@ impl IntraLinkCrateLoader {
         // error instead and special case *only* modules with `#[doc(primitive)]`, not all
         // primitives.
         let ty_res = resolve_primitive(&path_root, TypeNS)
+            .map(Into::into)
             .or_else(|| self.resolve_path(&path_root, TypeNS, module_id))
 			.map(|res| (res, item_name));
 		let variant_res = if ns == Namespace::ValueNS {
@@ -283,7 +284,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> Option<ItemLink> {
+    ) -> Option<Result<ItemLink, PreprocessingError<'static>>> {
         trace!("considering link '{}'", ori_link.link);
 
         let diag_info = DiagnosticInfo {
@@ -296,25 +297,28 @@ impl IntraLinkCrateLoader {
         let PreprocessingInfo { path_str, disambiguator, extra_fragment, link_text } =
             match preprocess_link(&ori_link)? {
                 Ok(x) => x,
-                Err(err) => {
-                    match err {
-                        PreprocessingError::Anchor(err) => anchor_failure(self.cx, diag_info, err),
-                        PreprocessingError::Disambiguator(range, msg) => {
-                            disambiguator_error(self.cx, diag_info, range, &msg)
-                        }
-                        PreprocessingError::Resolution(err, path_str, disambiguator) => {
-                            resolution_failure(
-                                self,
-                                diag_info,
-                                &path_str,
-                                disambiguator,
-                                smallvec![err],
-                            );
-                        }
-                    }
-                    return None;
-                }
+                Err(err) => return Some(Err(err)),
             };
+            //     Ok(x) => x,
+            //     Err(err) => {
+            //         match err {
+            //             PreprocessingError::Anchor(err) => anchor_failure(self.cx, diag_info, err),
+            //             PreprocessingError::Disambiguator(range, msg) => {
+            //                 disambiguator_error(self.cx, diag_info, range, &msg)
+            //             }
+            //             PreprocessingError::Resolution(err, path_str, disambiguator) => {
+            //                 resolution_failure(
+            //                     self,
+            //                     diag_info,
+            //                     &path_str,
+            //                     disambiguator,
+            //                     smallvec![err],
+            //                 );
+            //             }
+            //         }
+            //         return None;
+            //     }
+            // };
         let mut path_str = &*path_str;
 
         // In order to correctly resolve intra-doc links we need to
@@ -339,14 +343,11 @@ impl IntraLinkCrateLoader {
         } else {
             // This is a bug.
             debug!("attempting to resolve item without parent module: {}", path_str);
-            resolution_failure(
-                self,
-                diag_info,
-                path_str,
+            return Some(Err(PreprocessingError::Resolution(
+                ResolutionFailure::NoParentItem,
+                path_str.to_string(),
                 disambiguator,
-                smallvec![ResolutionFailure::NoParentItem],
-            );
-            return None;
+            )));
         };
 
         let resolved_self;
@@ -403,40 +404,39 @@ impl IntraLinkCrateLoader {
                 // `prim@char`
                 if matches!(disambiguator, Some(Disambiguator::Primitive)) {
                     if fragment.is_some() {
-                        anchor_failure(
-                            self.cx,
-                            diag_info,
-                            AnchorFailure::RustdocAnchorConflict(prim),
-                        );
-                        return None;
+                        return Some(Err(PreprocessingError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into()))));
                     }
-                    res = prim;
-                    fragment = Some(prim.name(self.cx.tcx));
+                    res = prim.into();
+                    fragment = Some(prim.as_str().to_string());
                 } else {
                     // `[char]` when a `char` module is in scope
-                    let candidates = vec![res, prim];
-                    ambiguity_error(self.cx, diag_info, path_str, candidates);
-                    return None;
+                    let candidates = vec![res, prim.into()];
+                    return Some(Err(PreprocessingError::Ambiguous(candidates, path_str.to_string())));
                 }
             }
         }
 
         let report_mismatch = |specified: Disambiguator, resolved: Disambiguator| {
-            // The resolved item did not match the disambiguator; give a better error than 'not found'
-            let msg = format!("incompatible link kind for `{}`", path_str);
-            let callback = |diag: &mut DiagnosticBuilder<'_>, sp| {
-                let note = format!(
-                    "this link resolved to {} {}, which is not {} {}",
-                    resolved.article(),
-                    resolved.descr(),
-                    specified.article(),
-                    specified.descr()
-                );
-                diag.note(&note);
-                suggest_disambiguator(resolved, diag, path_str, dox, sp, &ori_link.range);
-            };
-            report_diagnostic(self.cx.tcx, BROKEN_INTRA_DOC_LINKS, &msg, &diag_info, callback);
-        };
+            Some(Err(PreprocessingError::DisambiguatorMismatch{
+                specified,
+                resolved,
+            }))
+        }; 
+        //     // The resolved item did not match the disambiguator; give a better error than 'not found'
+        //     let msg = format!("incompatible link kind for `{}`", path_str);
+        //     let callback = |diag: &mut DiagnosticBuilder<'_>, sp| {
+        //         let note = format!(
+        //             "this link resolved to {} {}, which is not {} {}",
+        //             resolved.article(),
+        //             resolved.descr(),
+        //             specified.article(),
+        //             specified.descr()
+        //         );
+        //         diag.note(&note);
+        //         suggest_disambiguator(resolved, diag, path_str, dox, sp, &ori_link.range);
+        //     };
+        //     report_diagnostic(self.cx.tcx, BROKEN_INTRA_DOC_LINKS, &msg, &diag_info, callback);
+        // };
 
         let verify = |kind: DefKind, id: DefId| {
             let (kind, id) = self.kind_side_channel.take().unwrap_or((kind, id));
@@ -457,32 +457,14 @@ impl IntraLinkCrateLoader {
                 => {}
                 (actual, Some(Disambiguator::Kind(expected))) if actual == expected => {}
                 (_, Some(specified @ Disambiguator::Kind(_) | specified @ Disambiguator::Primitive)) => {
-                    report_mismatch(specified, Disambiguator::Kind(kind));
-                    return None;
+                    return report_mismatch(specified, Disambiguator::Kind(kind));
                 }
             }
 
-            // item can be non-local e.g. when using #[doc(primitive = "pointer")]
-            if let Some((src_id, dst_id)) = id
-                .as_local()
-                .and_then(|dst_id| item.def_id.as_local().map(|src_id| (src_id, dst_id)))
-            {
-                use rustc_hir::def_id::LOCAL_CRATE;
-
-                let hir_src = self.cx.tcx.hir().local_def_id_to_hir_id(src_id);
-                let hir_dst = self.cx.tcx.hir().local_def_id_to_hir_id(dst_id);
-
-                if self.cx.tcx.privacy_access_levels(LOCAL_CRATE).is_exported(hir_src)
-                    && !self.cx.tcx.privacy_access_levels(LOCAL_CRATE).is_exported(hir_dst)
-                {
-                    privacy_error(self.cx, &diag_info, &path_str);
-                }
-            }
-
-            Some(())
+            Some(Ok(()))
         };
 
-        match res {
+        let did = match res {
             Res::Primitive(prim) => {
                 if let Some((kind, id)) = self.kind_side_channel.take() {
                     // We're actually resolving an associated item of a primitive, so we need to
@@ -493,49 +475,24 @@ impl IntraLinkCrateLoader {
                     // doesn't allow statements like `use str::trim;`, making this a (hopefully)
                     // valid omission. See https://github.com/rust-lang/rust/pull/80660#discussion_r551585677
                     // for discussion on the matter.
+                    // TODO: something is up with the error handling here
                     verify(kind, id)?;
-
-                    // FIXME: it would be nice to check that the feature gate was enabled in the original crate, not just ignore it altogether.
-                    // However I'm not sure how to check that across crates.
-                    if prim == PrimitiveType::RawPointer
-                        && item.def_id.is_local()
-                        && !self.cx.tcx.features().intra_doc_pointers
-                    {
-                        let span = crate::passes::source_span_for_markdown_range(
-                            self.cx.tcx,
-                            dox,
-                            &ori_link.range,
-                            &item.attrs,
-                        )
-                        .unwrap_or_else(|| span_of_attrs(&item.attrs).unwrap_or(item.span.inner()));
-
-                        rustc_session::parse::feature_err(
-                            &self.cx.tcx.sess.parse_sess,
-                            sym::intra_doc_pointers,
-                            span,
-                            "linking to associated items of raw pointers is experimental",
-                        )
-                        .note("rustdoc does not allow disambiguating between `*const` and `*mut`, and pointers are unstable until it does")
-                        .emit();
-                    }
                 } else {
                     match disambiguator {
                         Some(Disambiguator::Primitive | Disambiguator::Namespace(_)) | None => {}
                         Some(other) => {
-                            report_mismatch(other, Disambiguator::Primitive);
-                            return None;
+                            return report_mismatch(other, Disambiguator::Primitive);
                         }
                     }
                 }
-
-                Some(ItemLink { link: ori_link.link, link_text, did: None, fragment })
+                None
             }
             Res::Def(kind, id) => {
                 verify(kind, id)?;
-                let id = clean::register_res(self.cx, rustc_hir::def::Res::Def(kind, id));
-                Some(ItemLink { link: ori_link.link, link_text, did: Some(id), fragment })
+                Some(clean::register_res(self.cx, rustc_hir::def::Res::Def(kind, id)))
             }
-        }
+        };
+        Some(Ok(ItemLink { link: ori_link.link, link_text, did, fragment }))
     }
 
     fn resolve_with_disambiguator_cached(
