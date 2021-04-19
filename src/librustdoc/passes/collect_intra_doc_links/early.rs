@@ -116,7 +116,7 @@ impl IntraLinkCrateLoader {
         ns: Namespace,
         module_id: DefId,
         extra_fragment: &Option<String>,
-    ) -> EarlyResult {
+    ) -> LinkResult<EarlyRes> {
         if let Some(res) = self.resolve_path(path_str, ns, module_id) {
             match res {
                 // FIXME(#76467): make this fallthrough to lookup the associated
@@ -124,18 +124,18 @@ impl IntraLinkCrateLoader {
                 Res::Def(DefKind::AssocFn | DefKind::AssocConst, _) => assert_eq!(ns, ValueNS),
                 Res::Def(DefKind::AssocTy, _) => assert_eq!(ns, TypeNS),
                 Res::Def(DefKind::Variant, _) => {
-                    return EarlyResult::UnresolvedVariant(res);
+                    return Ok(EarlyRes::UnresolvedVariant(res));
                 }
                 // Not a trait item; just return what we found.
                 Res::Primitive(ty) => {
                     if extra_fragment.is_some() {
-                        return EarlyResult::Error(ErrorKind::AnchorFailure(
-                            AnchorFailure::RustdocAnchorConflict(res.into()),
-                        ));
+                        return Err(
+                            AnchorFailure::RustdocAnchorConflict(res.into()).into(),
+                        );
                     }
-                    return EarlyResult::Resolved(res, Some(ty.as_str().to_owned()));
+                    return Ok(EarlyRes::Resolved(res, Some(ty.as_str().to_owned())));
                 }
-                _ => return EarlyResult::Resolved(res, extra_fragment.clone()),
+                _ => return Ok(EarlyRes::Resolved(res, extra_fragment.clone())),
             }
         }
 
@@ -151,11 +151,12 @@ impl IntraLinkCrateLoader {
 				// If there's no `::`, it's not an associated item.
 				// So we can be sure that `rustc_resolve` was accurate when it said it wasn't resolved.
                 debug!("found no `::`, assumming {} was correctly not in scope", item_name);
-                return EarlyResult::Error(ResolutionFailure::NotResolved {
+                let err = ResolutionFailure::NotResolved {
                     module_id,
                     partial_res: None,
                     unresolved: item_str.into(),
-                }.into());
+                };
+                return Err(LinkError::Resolution(err, path_str.to_string(), disambiguator));
             }
 		};
 
@@ -172,9 +173,9 @@ impl IntraLinkCrateLoader {
 		} else {
 			None
 		};
-		EarlyResult::Unresolved(UnresolvedLink {
+		Ok(EarlyRes::Unresolved(UnresolvedLink {
 			ty_res, variant_res
-		})
+		}))
 	}
 
 	fn variant_res(&self, path_str: &str, module_id: DefId) -> Option<(Res, Symbol, Symbol)> {
@@ -563,34 +564,24 @@ impl IntraLinkCrateLoader {
 
         match disambiguator.map(Disambiguator::ns) {
             Some(expected_ns @ (ValueNS | TypeNS)) => {
-                match self.resolve(path_str, expected_ns, base_node, extra_fragment) {
-                    Ok(res) => Some(res),
-                    Err(ErrorKind::Resolve(box mut kind)) => {
-                        // We only looked in one namespace. Try to give a better error if possible.
-                        if kind.full_res().is_none() {
-                            let other_ns = if expected_ns == ValueNS { TypeNS } else { ValueNS };
-                            // FIXME: really it should be `resolution_failure` that does this, not `resolve_with_disambiguator`
-                            // See https://github.com/rust-lang/rust/pull/76955#discussion_r493953382 for a good approach
-                            for &new_ns in &[other_ns, MacroNS] {
-                                if let Some(res) =
-                                    self.check_full_res(new_ns, path_str, base_node, extra_fragment)
-                                {
-                                    kind = ResolutionFailure::WrongNamespace { res, expected_ns };
-                                    break;
-                                }
+                let mut result = self.resolve(path_str, expected_ns, base_node, extra_fragment);
+                if let Err(LinkError::Resolution(mut kind, _, _)) = &mut result {
+                    // We only looked in one namespace. Try to give a better error if possible.
+                    if kind.full_res().is_none() {
+                        let other_ns = if expected_ns == ValueNS { TypeNS } else { ValueNS };
+                        // FIXME: really it should be `resolution_failure` that does this, not `resolve_with_disambiguator`
+                        // See https://github.com/rust-lang/rust/pull/76955#discussion_r493953382 for a good approach
+                        for &new_ns in &[other_ns, MacroNS] {
+                            if let Some(res) =
+                                self.check_full_res(new_ns, path_str, base_node, extra_fragment)
+                            {
+                                *kind = ResolutionFailure::WrongNamespace { res, expected_ns };
+                                break;
                             }
                         }
-                        resolution_failure(self, diag, path_str, disambiguator, smallvec![kind]);
-                        // This could just be a normal link or a broken link
-                        // we could potentially check if something is
-                        // "intra-doc-link-like" and warn in that case.
-                        None
-                    }
-                    Err(ErrorKind::AnchorFailure(msg)) => {
-                        anchor_failure(self.cx, diag, msg);
-                        None
                     }
                 }
+                result
             }
             None => {
                 // Try everything!

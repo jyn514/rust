@@ -66,13 +66,14 @@ impl<'a> From<ResolutionFailure<'a>> for ErrorKind<'a> {
     }
 }
 
-crate enum EarlyResult {
+#[derive(Debug)]
+crate enum EarlyRes {
     Resolved(Res, Option<String>),
     Unresolved(UnresolvedLink),
     UnresolvedVariant(Res),
-    Error(ErrorKind<'static>),
 }
 
+#[derive(Debug)]
 crate struct UnresolvedLink {
     /// The resolution for all path segments excluding the last.
     ///
