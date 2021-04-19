@@ -525,29 +525,28 @@ impl IntraLinkCrateLoader {
             }
         }
 
-        let res = self.resolve_with_disambiguator(&key, diag);
+        let result = self.resolve_with_disambiguator(&key, diag);
 
         // Cache only if resolved successfully - don't silence duplicate errors
-        if let Some(res) = res {
-            // Store result for the actual namespace
-            self.visited_links.insert(
-                key,
-                Some(CachedLink {
-                    res: res.clone(),
-                    side_channel: self.kind_side_channel.clone().into_inner(),
-                }),
-            );
-
-            Some(res)
-        } else {
-            if cache_resolution_failure {
+        match &result {
+            Ok(res) => {
+                // Store result for the actual namespace
+                self.visited_links.insert(
+                    key,
+                    Ok(CachedLink {
+                        res: res.clone(),
+                        side_channel: self.kind_side_channel.clone().into_inner(),
+                    }),
+                );
+            }
+            Err(err) if cache_resolution_failure => {
                 // For reference-style links we only want to report one resolution error
                 // so let's cache them as well.
-                self.visited_links.insert(key, None);
+                self.visited_links.insert(key, Err(err.clone()));
             }
-
-            None
+            Err(_) => {}
         }
+        result
     }
 
     /// After parsing the disambiguator, resolve the main part of the link.
@@ -556,7 +555,7 @@ impl IntraLinkCrateLoader {
         &mut self,
         key: &ResolutionInfo,
         diag: DiagnosticInfo<'_>,
-    ) -> Option<(Res, Option<String>)> {
+    ) -> LinkResult<(Res, Option<String>)> {
         let disambiguator = key.dis;
         let path_str = &key.path_str;
         let base_node = key.module_id;
