@@ -285,7 +285,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> Option<LinkResult<ItemLink>> {
+    ) -> Option<LinkResult<EarlyRes>> {
         trace!("considering link '{}'", ori_link.link);
 
         let diag_info = DiagnosticInfo {
@@ -309,7 +309,7 @@ impl IntraLinkCrateLoader {
         parent_node: Option<DefId>,
         krate: CrateNum,
         ori_link: MarkdownLink,
-    ) -> LinkResult<ItemLink> {
+    ) -> LinkResult<EarlyRes> {
             //     Ok(x) => x,
             //     Err(err) => {
             //         match err {
@@ -391,7 +391,7 @@ impl IntraLinkCrateLoader {
             module_id = DefId { krate, index: CRATE_DEF_INDEX };
         }
 
-        let (mut res, mut fragment) = self.resolve_with_disambiguator_cached(
+        self.resolve_with_disambiguator_cached(
             ResolutionInfo {
                 module_id,
                 dis: disambiguator,
@@ -400,38 +400,39 @@ impl IntraLinkCrateLoader {
             },
             diag_info.clone(), // this struct should really be Copy, but Range is not :(
             matches!(ori_link.kind, LinkType::Reference | LinkType::Shortcut),
-        )?;
+        )
 
+        // TODO: move all this into the late pass
         // Check for a primitive which might conflict with a module
         // Report the ambiguity and require that the user specify which one they meant.
         // FIXME: could there ever be a primitive not in the type namespace?
-        if matches!(
-            disambiguator,
-            None | Some(Disambiguator::Namespace(Namespace::TypeNS) | Disambiguator::Primitive)
-        ) && !matches!(res, Res::Primitive(_))
-        {
-            if let Some(prim) = resolve_primitive(path_str, TypeNS) {
-                // `prim@char`
-                if matches!(disambiguator, Some(Disambiguator::Primitive)) {
-                    if fragment.is_some() {
-                        return Err(LinkError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into())));
-                    }
-                    res = prim.into();
-                    fragment = Some(prim.as_str().to_string());
-                } else {
-                    // `[char]` when a `char` module is in scope
-                    let candidates = vec![res, prim.into()];
-                    return Err(LinkError::Ambiguous(candidates, path_str.to_string()));
-                }
-            }
-        }
+        // if matches!(
+        //     disambiguator,
+        //     None | Some(Disambiguator::Namespace(Namespace::TypeNS) | Disambiguator::Primitive)
+        // ) && !matches!(res, Res::Primitive(_))
+        // {
+        //     if let Some(prim) = resolve_primitive(path_str, TypeNS) {
+        //         // `prim@char`
+        //         if matches!(disambiguator, Some(Disambiguator::Primitive)) {
+        //             if fragment.is_some() {
+        //                 return Err(LinkError::Anchor(AnchorFailure::RustdocAnchorConflict(prim.into())));
+        //             }
+        //             res = prim.into();
+        //             fragment = Some(prim.as_str().to_string());
+        //         } else {
+        //             // `[char]` when a `char` module is in scope
+        //             let candidates = vec![res, prim.into()];
+        //             return Err(LinkError::Ambiguous(candidates, path_str.to_string()));
+        //         }
+        //     }
+        // }
 
-        let report_mismatch = |specified: Disambiguator, resolved: Disambiguator| {
-            LinkError::DisambiguatorMismatch{
-                specified,
-                resolved,
-            }
-        }; 
+        // let report_mismatch = |specified: Disambiguator, resolved: Disambiguator| {
+        //     LinkError::DisambiguatorMismatch{
+        //         specified,
+        //         resolved,
+        //     }
+        // }; 
         //     // The resolved item did not match the disambiguator; give a better error than 'not found'
         //     let msg = format!("incompatible link kind for `{}`", path_str);
         //     let callback = |diag: &mut DiagnosticBuilder<'_>, sp| {
@@ -448,60 +449,60 @@ impl IntraLinkCrateLoader {
         //     report_diagnostic(self.cx.tcx, BROKEN_INTRA_DOC_LINKS, &msg, &diag_info, callback);
         // };
 
-        let verify = |kind: DefKind, id: DefId| {
-            let (kind, id) = self.kind_side_channel.take().unwrap_or((kind, id));
-            debug!("intra-doc link to {} resolved to {:?} (id: {:?})", path_str, res, id);
+        // let verify = |kind: DefKind, id: DefId| {
+        //     let (kind, id) = self.kind_side_channel.take().unwrap_or((kind, id));
+        //     debug!("intra-doc link to {} resolved to {:?} (id: {:?})", path_str, res, id);
 
-            // Disallow e.g. linking to enums with `struct@`
-            debug!("saw kind {:?} with disambiguator {:?}", kind, disambiguator);
-            match (kind, disambiguator) {
-                | (DefKind::Const | DefKind::ConstParam | DefKind::AssocConst | DefKind::AnonConst, Some(Disambiguator::Kind(DefKind::Const)))
-                // NOTE: this allows 'method' to mean both normal functions and associated functions
-                // This can't cause ambiguity because both are in the same namespace.
-                | (DefKind::Fn | DefKind::AssocFn, Some(Disambiguator::Kind(DefKind::Fn)))
-                // These are namespaces; allow anything in the namespace to match
-                | (_, Some(Disambiguator::Namespace(_)))
-                // If no disambiguator given, allow anything
-                | (_, None)
-                // All of these are valid, so do nothing
-                => {}
-                (actual, Some(Disambiguator::Kind(expected))) if actual == expected => {}
-                (_, Some(specified @ Disambiguator::Kind(_) | specified @ Disambiguator::Primitive)) => {
-                    return Err(report_mismatch(specified, Disambiguator::Kind(kind)));
-                }
-            }
+        //     // Disallow e.g. linking to enums with `struct@`
+        //     debug!("saw kind {:?} with disambiguator {:?}", kind, disambiguator);
+        //     match (kind, disambiguator) {
+        //         | (DefKind::Const | DefKind::ConstParam | DefKind::AssocConst | DefKind::AnonConst, Some(Disambiguator::Kind(DefKind::Const)))
+        //         // NOTE: this allows 'method' to mean both normal functions and associated functions
+        //         // This can't cause ambiguity because both are in the same namespace.
+        //         | (DefKind::Fn | DefKind::AssocFn, Some(Disambiguator::Kind(DefKind::Fn)))
+        //         // These are namespaces; allow anything in the namespace to match
+        //         | (_, Some(Disambiguator::Namespace(_)))
+        //         // If no disambiguator given, allow anything
+        //         | (_, None)
+        //         // All of these are valid, so do nothing
+        //         => {}
+        //         (actual, Some(Disambiguator::Kind(expected))) if actual == expected => {}
+        //         (_, Some(specified @ Disambiguator::Kind(_) | specified @ Disambiguator::Primitive)) => {
+        //             return Err(report_mismatch(specified, Disambiguator::Kind(kind)));
+        //         }
+        //     }
 
-            Ok(())
-        };
+        //     Ok(())
+        // };
 
-        let did = match res {
-            Res::Primitive(prim) => {
-                if let Some((kind, id)) = self.kind_side_channel.take() {
-                    verify(kind, id)?;
-                } else {
-                    match disambiguator {
-                        Some(Disambiguator::Primitive | Disambiguator::Namespace(_)) | None => {}
-                        Some(other) => {
-                            return Err(report_mismatch(other, Disambiguator::Primitive));
-                        }
-                    }
-                }
-                // We're actually resolving an associated item of a primitive, so we need to
-                // verify the disambiguator (if any) matches the type of the associated item.
-                // This case should really follow the same flow as the `Res::Def` branch below,
-                // but attempting to add a call to `clean::register_res` causes an ICE. @jyn514
-                // thinks `register_res` is only needed for cross-crate re-exports, but Rust
-                // doesn't allow statements like `use str::trim;`, making this a (hopefully)
-                // valid omission. See https://github.com/rust-lang/rust/pull/80660#discussion_r551585677
-                // for discussion on the matter.
-                None
-            }
-            Res::Def(kind, id) => {
-                verify(kind, id)?;
-                Some(id)
-            }
-        };
-        Ok(ItemLink { link: ori_link.link, link_text, did, fragment })
+        // let did = match res {
+        //     Res::Primitive(prim) => {
+        //         if let Some((kind, id)) = self.kind_side_channel.take() {
+        //             verify(kind, id)?;
+        //         } else {
+        //             match disambiguator {
+        //                 Some(Disambiguator::Primitive | Disambiguator::Namespace(_)) | None => {}
+        //                 Some(other) => {
+        //                     return Err(report_mismatch(other, Disambiguator::Primitive));
+        //                 }
+        //             }
+        //         }
+        //         // We're actually resolving an associated item of a primitive, so we need to
+        //         // verify the disambiguator (if any) matches the type of the associated item.
+        //         // This case should really follow the same flow as the `Res::Def` branch below,
+        //         // but attempting to add a call to `clean::register_res` causes an ICE. @jyn514
+        //         // thinks `register_res` is only needed for cross-crate re-exports, but Rust
+        //         // doesn't allow statements like `use str::trim;`, making this a (hopefully)
+        //         // valid omission. See https://github.com/rust-lang/rust/pull/80660#discussion_r551585677
+        //         // for discussion on the matter.
+        //         None
+        //     }
+        //     Res::Def(kind, id) => {
+        //         verify(kind, id)?;
+        //         Some(id)
+        //     }
+        // };
+        // Ok(ItemLink { link: ori_link.link, link_text, did, fragment })
     }
 
     fn resolve_with_disambiguator_cached(
@@ -509,44 +510,45 @@ impl IntraLinkCrateLoader {
         key: ResolutionInfo,
         diag: DiagnosticInfo<'_>,
         cache_resolution_failure: bool,
-    ) -> LinkResult<(Res, Option<String>)> {
-        // Try to look up both the result and the corresponding side channel value
-        if let Some(ref cached) = self.visited_links.get(&key) {
-            match cached {
-                Ok(cached) => {
-                    self.kind_side_channel.set(cached.side_channel.clone());
-                    return Ok(cached.res.clone());
-                }
-                Err(err) if cache_resolution_failure => return Err(err.clone()),
-                Err(_) => {
-                    // Although we hit the cache and found a resolution error, this link isn't
-                    // supposed to cache those. Run link resolution again to emit the expected
-                    // resolution error.
-                }
-            }
-        }
+    ) -> LinkResult<EarlyRes> {
+        // TODO: add back caching
+        // // Try to look up both the result and the corresponding side channel value
+        // if let Some(ref cached) = self.visited_links.get(&key) {
+        //     match cached {
+        //         Ok(cached) => {
+        //             self.kind_side_channel.set(cached.side_channel.clone());
+        //             return Ok(cached.res.clone());
+        //         }
+        //         Err(err) if cache_resolution_failure => return Err(err.clone()),
+        //         Err(_) => {
+        //             // Although we hit the cache and found a resolution error, this link isn't
+        //             // supposed to cache those. Run link resolution again to emit the expected
+        //             // resolution error.
+        //         }
+        //     }
+        // }
 
         let result = self.resolve_with_disambiguator(&key, diag);
 
-        // Cache only if resolved successfully - don't silence duplicate errors
-        match &result {
-            Ok(res) => {
-                // Store result for the actual namespace
-                self.visited_links.insert(
-                    key,
-                    Ok(CachedLink {
-                        res: res.clone(),
-                        side_channel: self.kind_side_channel.clone().into_inner(),
-                    }),
-                );
-            }
-            Err(err) if cache_resolution_failure => {
-                // For reference-style links we only want to report one resolution error
-                // so let's cache them as well.
-                self.visited_links.insert(key, Err(err.clone()));
-            }
-            Err(_) => {}
-        }
+        // // Cache only if resolved successfully - don't silence duplicate errors
+        // match &result {
+        //     Ok(res) => {
+        //         // Store result for the actual namespace
+        //         self.visited_links.insert(
+        //             key,
+        //             Ok(CachedLink {
+        //                 res: res.clone(),
+        //                 side_channel: self.kind_side_channel.clone().into_inner(),
+        //             }),
+        //         );
+        //     }
+        //     Err(err) if cache_resolution_failure => {
+        //         // For reference-style links we only want to report one resolution error
+        //         // so let's cache them as well.
+        //         self.visited_links.insert(key, Err(err.clone()));
+        //     }
+        //     Err(_) => {}
+        // }
         result
     }
 
@@ -556,7 +558,7 @@ impl IntraLinkCrateLoader {
         &mut self,
         key: &ResolutionInfo,
         diag: DiagnosticInfo<'_>,
-    ) -> LinkResult<(Res, Option<String>)> {
+    ) -> LinkResult<EarlyRes> {
         let disambiguator = key.dis;
         let path_str = &key.path_str;
         let base_node = key.module_id;
@@ -565,7 +567,7 @@ impl IntraLinkCrateLoader {
         match disambiguator.map(Disambiguator::ns) {
             Some(expected_ns @ (ValueNS | TypeNS)) => {
                 let mut result = self.resolve(path_str, expected_ns, base_node, extra_fragment);
-                if let Err(LinkError::Resolution(mut kind, _, _)) = &mut result {
+                if let Err(LinkError::Resolution(ref mut kind, _, _)) = &mut result {
                     // We only looked in one namespace. Try to give a better error if possible.
                     if kind.full_res().is_none() {
                         let other_ns = if expected_ns == ValueNS { TypeNS } else { ValueNS };
@@ -588,57 +590,48 @@ impl IntraLinkCrateLoader {
                 let mut candidates = PerNS {
                     macro_ns: self
                         .resolve_macro(path_str, base_node)
-                        .map(|res| (res, extra_fragment.clone())),
+                        .map(|res| EarlyRes::Resolved(res, extra_fragment.clone())),
                     type_ns: match self.resolve(path_str, TypeNS, base_node, extra_fragment) {
                         Ok(res) => {
                             debug!("got res in TypeNS: {:?}", res);
                             Ok(res)
                         }
-                        Err(ErrorKind::AnchorFailure(msg)) => {
-                            anchor_failure(self.cx, diag, msg);
-                            return None;
-                        }
-                        Err(ErrorKind::Resolve(box kind)) => Err(kind),
+                        Err(LinkError::Resolution(kind, _, _)) => Err(kind),
+                        Err(other) => return Err(other),
                     },
                     value_ns: match self.resolve(path_str, ValueNS, base_node, extra_fragment) {
-                        Ok(res) => Ok(res),
-                        Err(ErrorKind::AnchorFailure(msg)) => {
-                            anchor_failure(self.cx, diag, msg);
-                            return None;
-                        }
-                        Err(ErrorKind::Resolve(box kind)) => Err(kind),
-                    }
-                    .and_then(|(res, fragment)| {
-                        // Constructors are picked up in the type namespace.
-                        match res {
-                            Res::Def(DefKind::Ctor(..), _) => {
-                                Err(ResolutionFailure::WrongNamespace { res, expected_ns: TypeNS })
-                            }
-                            _ => {
-                                match (fragment, extra_fragment.clone()) {
-                                    (Some(fragment), Some(_)) => {
-                                        // Shouldn't happen but who knows?
-                                        Ok((res, Some(fragment)))
-                                    }
-                                    (fragment, None) | (None, fragment) => Ok((res, fragment)),
+                        Ok(EarlyRes::Resolved(res, fragment)) => {
+                            // Constructors are picked up in the type namespace.
+                            match res {
+                                Res::Def(DefKind::Ctor(..), _) => {
+                                    Err(ResolutionFailure::WrongNamespace { res, expected_ns: TypeNS })
+                                }
+                                _ => {
+                                    let (res, fragment) = match (fragment, extra_fragment.clone()) {
+                                        (Some(fragment), Some(_)) => {
+                                            // Shouldn't happen but who knows?
+                                            (res, Some(fragment))
+                                        }
+                                        (fragment, None) | (None, fragment) => (res, fragment),
+                                    };
+                                    Ok(EarlyRes::Resolved(res, fragment))
                                 }
                             }
                         }
-                    }),
+                        Ok(other) => Ok(other),
+                        Err(LinkError::Resolution(kind, _, _)) => Err(kind),
+                        Err(other) => return Err(other),
+                    }
                 };
 
                 let len = candidates.iter().filter(|res| res.is_ok()).count();
 
                 if len == 0 {
-                    resolution_failure(
-                        self,
-                        diag,
-                        path_str,
-                        disambiguator,
+                    return Err(LinkError::Resolution(
                         candidates.into_iter().filter_map(|res| res.err()).collect(),
-                    );
-                    // this could just be a normal link
-                    return None;
+                        path_str.to_string(),
+                        disambiguator,
+                    ));
                 }
 
                 if len == 1 {
@@ -651,8 +644,7 @@ impl IntraLinkCrateLoader {
                     }
                     // If we're reporting an ambiguity, don't mention the namespaces that failed
                     let candidates = candidates.map(|candidate| candidate.ok().map(|(res, _)| res));
-                    ambiguity_error(self.cx, diag, path_str, candidates.present_items().collect());
-                    None
+                    Err(LinkError::Ambiguous(candidates, path_str.to_string()))
                 }
             }
             Some(MacroNS) => {
