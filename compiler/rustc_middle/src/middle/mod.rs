@@ -4,14 +4,15 @@ pub mod dependency_format;
 pub mod exported_symbols;
 pub mod lang_items;
 pub mod lib_features {
-    use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+    use rustc_data_structures::fx::FxHashMap;
+    use rustc_data_structures::stable_set::StableSet;
     use rustc_span::symbol::Symbol;
 
     #[derive(HashStable, Debug)]
     pub struct LibFeatures {
         // A map from feature to stabilisation version.
         pub stable: FxHashMap<Symbol, Symbol>,
-        pub unstable: FxHashSet<Symbol>,
+        pub unstable: StableSet<Symbol>,
     }
 
     impl LibFeatures {
@@ -20,7 +21,7 @@ pub mod lib_features {
                 .stable
                 .iter()
                 .map(|(f, s)| (*f, Some(*s)))
-                .chain(self.unstable.iter().map(|f| (*f, None)))
+                .chain(self.unstable.to_sorted_vec().into_iter().map(|f| (*f, None)))
                 .collect();
             all_features.sort_unstable_by_key(|f| f.0.as_str());
             all_features

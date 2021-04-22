@@ -31,6 +31,7 @@ use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::profiling::SelfProfilerRef;
 use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap};
 use rustc_data_structures::stable_hasher::{HashStable, StableHasher, StableVec};
+use rustc_data_structures::stable_set::StableSet;
 use rustc_data_structures::steal::Steal;
 use rustc_data_structures::sync::{self, Lock, Lrc, WorkerLocal};
 use rustc_errors::ErrorReported;
@@ -415,7 +416,7 @@ pub struct TypeckResults<'tcx> {
     /// This is used for warning unused imports. During type
     /// checking, this `Lrc` should not be cloned: it must have a ref-count
     /// of 1 so that we can insert things into the set mutably.
-    pub used_trait_imports: Lrc<FxHashSet<LocalDefId>>,
+    pub used_trait_imports: Lrc<StableSet<LocalDefId>>,
 
     /// If any errors occurred while type-checking this body,
     /// this field will be set to `Some(ErrorReported)`.

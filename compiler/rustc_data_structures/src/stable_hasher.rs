@@ -498,15 +498,13 @@ where
     }
 }
 
-impl<K, R, HCX> HashStable<HCX> for ::std::collections::HashSet<K, R>
+impl<K, HCX> HashStable<HCX> for crate::stable_set::StableSet<K>
 where
-    K: ToStableHashKey<HCX> + Eq,
-    R: BuildHasher,
+    K: ToStableHashKey<HCX> + Eq + Ord + Hash,
+    for<'a> Vec<&'a K>: HashStable<HCX>,
 {
     fn hash_stable(&self, hcx: &mut HCX, hasher: &mut StableHasher) {
-        let mut keys: Vec<_> = self.iter().map(|k| k.to_stable_hash_key(hcx)).collect();
-        keys.sort_unstable();
-        keys.hash_stable(hcx, hasher);
+        self.to_sorted_vec().hash_stable(hcx, hasher);
     }
 }
 

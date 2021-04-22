@@ -7,8 +7,8 @@ use std::hash::Hash;
 ///
 /// It supports insert, remove, get functions from FxHashSet.
 /// It also allows to convert hashset to a sorted vector with the method `into_sorted_vec()`.
-#[derive(Clone)]
-pub struct StableSet<T> {
+#[derive(Clone, Encodable, Decodable)]
+pub struct StableSet<T: Eq + Hash> {
     base: FxHashSet<T>,
 }
 
@@ -41,9 +41,18 @@ where
 
 impl<T> Eq for StableSet<T> where T: Eq + Hash {}
 
-impl<T: Hash + Eq> StableSet<T> {
+impl<T: Eq + Hash> StableSet<T> {
     pub fn new() -> StableSet<T> {
         StableSet { base: FxHashSet::default() }
+    }
+
+    pub fn to_sorted_vec(&self) -> Vec<&T>
+    where
+        T: Ord,
+    {
+        let mut vector = self.base.iter().collect::<Vec<_>>();
+        vector.sort_unstable();
+        vector
     }
 
     pub fn into_sorted_vec(self) -> Vec<T>
@@ -73,5 +82,13 @@ impl<T: Hash + Eq> StableSet<T> {
         Q: Hash + Eq,
     {
         self.base.remove(value)
+    }
+
+    pub fn contains<Q: ?Sized>(&self, value: &Q) -> bool
+    where
+        T: Borrow<Q>,
+        Q: Hash + Eq,
+    {
+        self.base.contains(value)
     }
 }

@@ -6,7 +6,8 @@ pub use self::StabilityLevel::*;
 use crate::ty::{self, TyCtxt};
 use rustc_ast::NodeId;
 use rustc_attr::{self as attr, ConstStability, Deprecation, Stability};
-use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::stable_set::StableSet;
 use rustc_errors::{Applicability, DiagnosticBuilder};
 use rustc_feature::GateIssue;
 use rustc_hir as hir;
@@ -69,7 +70,7 @@ pub struct Index<'tcx> {
     pub staged_api: FxHashMap<CrateNum, bool>,
 
     /// Features enabled for this crate.
-    pub active_features: FxHashSet<Symbol>,
+    pub active_features: StableSet<Symbol>,
 }
 
 impl<'tcx> Index<'tcx> {
