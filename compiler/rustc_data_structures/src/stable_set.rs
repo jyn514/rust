@@ -6,7 +6,7 @@ use std::hash::Hash;
 /// A deterministic wrapper around FxHashSet that does not provide iteration support.
 ///
 /// It supports insert, remove, get functions from FxHashSet.
-/// It also allows to convert hashset to a sorted vector with the method `into_sorted_vector()`.
+/// It also allows to convert hashset to a sorted vector with the method `into_sorted_vec()`.
 #[derive(Clone)]
 pub struct StableSet<T> {
     base: FxHashSet<T>,
@@ -46,7 +46,7 @@ impl<T: Hash + Eq> StableSet<T> {
         StableSet { base: FxHashSet::default() }
     }
 
-    pub fn into_sorted_vector(self) -> Vec<T>
+    pub fn into_sorted_vec(self) -> Vec<T>
     where
         T: Ord,
     {

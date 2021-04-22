@@ -7,7 +7,7 @@ use std::hash::Hash;
 /// A deterministic wrapper around FxHashMap that does not provide iteration support.
 ///
 /// It supports insert, remove, get and get_mut functions from FxHashMap.
-/// It also allows to convert hashmap to a sorted vector with the method `into_sorted_vector()`.
+/// It also allows to convert hashmap to a sorted vector with the method `into_sorted_vec()`.
 #[derive(Clone)]
 pub struct StableMap<K, V> {
     base: FxHashMap<K, V>,
@@ -57,7 +57,7 @@ where
         StableMap { base: FxHashMap::default() }
     }
 
-    pub fn into_sorted_vector(self) -> Vec<(K, V)>
+    pub fn into_sorted_vec(self) -> Vec<(K, V)>
     where
         K: Ord + Copy,
     {
