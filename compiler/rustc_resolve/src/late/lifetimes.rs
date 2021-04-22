@@ -9,6 +9,7 @@
 use crate::late::diagnostics::{ForLifetimeSpanType, MissingLifetimeSpot};
 use rustc_ast::walk_list;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_data_structures::stable_set::StableSet;
 use rustc_errors::{struct_span_err, Applicability, DiagnosticBuilder};
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
@@ -575,7 +576,7 @@ fn item_for(tcx: TyCtxt<'_>, local_def_id: LocalDefId) -> LocalDefId {
 fn is_late_bound_map<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_id: LocalDefId,
-) -> Option<(LocalDefId, &'tcx FxHashSet<ItemLocalId>)> {
+) -> Option<(LocalDefId, &'tcx StableSet<ItemLocalId>)> {
     match tcx.def_kind(def_id) {
         DefKind::AnonConst => {
             let mut def_id = tcx
@@ -740,9 +741,9 @@ impl<'a, 'tcx> Visitor<'tcx> for LifetimeContext<'a, 'tcx> {
                                 });
                             }
                             for (&owner, late_bound) in resolved_lifetimes.late_bound.iter() {
-                                late_bound.iter().for_each(|&local_id| {
+                                for &local_id in late_bound.to_sorted_vec() {
                                     self.map.late_bound.insert(hir::HirId { owner, local_id });
-                                });
+                                }
                             }
                             for (&owner, late_bound_vars) in
                                 resolved_lifetimes.late_bound_vars.iter()

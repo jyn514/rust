@@ -1,4 +1,5 @@
 use crate::def_id::{LocalDefId, CRATE_DEF_INDEX};
+use rustc_data_structures::fx::FxHashMap;
 use rustc_index::vec::IndexVec;
 use std::fmt;
 
@@ -42,7 +43,8 @@ impl fmt::Display for HirId {
 }
 
 rustc_data_structures::define_id_collections!(HirIdMap, HirIdSet, HirId);
-rustc_data_structures::define_id_collections!(ItemLocalMap, ItemLocalSet, ItemLocalId);
+pub type ItemLocalMap<T> = FxHashMap<ItemLocalId, T>;
+pub type ItemLocalSet = rustc_data_structures::stable_set::StableSet<ItemLocalId>;
 
 rustc_index::newtype_index! {
     /// An `ItemLocalId` uniquely identifies something within a given "item-like";

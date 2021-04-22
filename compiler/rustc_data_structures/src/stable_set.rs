@@ -41,6 +41,18 @@ where
 
 impl<T> Eq for StableSet<T> where T: Eq + Hash {}
 
+impl<T: Eq + Hash> Extend<T> for StableSet<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.base.extend(iter);
+    }
+}
+
+impl<T: Eq + Hash> std::iter::FromIterator<T> for StableSet<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self { base: FxHashSet::from_iter(iter) }
+    }
+}
+
 impl<T: Eq + Hash> StableSet<T> {
     pub fn new() -> StableSet<T> {
         StableSet { base: FxHashSet::default() }
