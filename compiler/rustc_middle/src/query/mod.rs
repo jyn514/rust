@@ -214,7 +214,7 @@ rustc_queries! {
     /// Set of all the `DefId`s in this crate that have MIR associated with
     /// them. This includes all the body owners, but also things like struct
     /// constructors.
-    query mir_keys(_: CrateNum) -> FxHashSet<LocalDefId> {
+    query mir_keys(_: CrateNum) -> StableSet<LocalDefId> {
         storage(ArenaCacheSelector<'tcx>)
         desc { "getting a list of all mir_keys" }
     }
@@ -701,7 +701,7 @@ rustc_queries! {
         }
     }
 
-    query used_trait_imports(key: LocalDefId) -> &'tcx FxHashSet<LocalDefId> {
+    query used_trait_imports(key: LocalDefId) -> &'tcx StableSet<LocalDefId> {
         desc { |tcx| "used_trait_imports `{}`", tcx.def_path_str(key.to_def_id()) }
         cache_on_disk_if { true }
     }
@@ -846,7 +846,7 @@ rustc_queries! {
         desc { "checking for private elements in public interfaces" }
     }
 
-    query reachable_set(_: CrateNum) -> FxHashSet<LocalDefId> {
+    query reachable_set(_: CrateNum) -> StableSet<LocalDefId> {
         storage(ArenaCacheSelector<'tcx>)
         desc { "reachability" }
     }

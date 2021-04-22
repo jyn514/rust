@@ -59,10 +59,10 @@ fn reachable_non_generics_provider(tcx: TyCtxt<'_>, cnum: CrateNum) -> DefIdMap<
     let special_runtime_crate =
         tcx.is_panic_runtime(LOCAL_CRATE) || tcx.is_compiler_builtins(LOCAL_CRATE);
 
-    let mut reachable_non_generics: DefIdMap<_> = tcx
+    let mut reachable_non_generics = tcx
         .reachable_set(LOCAL_CRATE)
-        .iter()
-        .filter_map(|&def_id| {
+        .to_sorted_vec();
+    reachable_non_generics.retain(|&&def_id| {
             // We want to ignore some FFI functions that are not exposed from
             // this crate. Reachable FFI functions can be lumped into two
             // categories:
@@ -78,7 +78,7 @@ fn reachable_non_generics_provider(tcx: TyCtxt<'_>, cnum: CrateNum) -> DefIdMap<
             // let it through if it's included statically.
             match tcx.hir().get(tcx.hir().local_def_id_to_hir_id(def_id)) {
                 Node::ForeignItem(..) => {
-                    tcx.is_statically_included_foreign_item(def_id).then_some(def_id)
+                    tcx.is_statically_included_foreign_item(def_id)
                 }
 
                 // Only consider nodes that actually have exported symbols.
@@ -88,22 +88,19 @@ fn reachable_non_generics_provider(tcx: TyCtxt<'_>, cnum: CrateNum) -> DefIdMap<
                 })
                 | Node::ImplItem(&hir::ImplItem { kind: hir::ImplItemKind::Fn(..), .. }) => {
                     let generics = tcx.generics_of(def_id);
-                    if !generics.requires_monomorphization(tcx)
+                    !generics.requires_monomorphization(tcx)
                         // Functions marked with #[inline] are codegened with "internal"
                         // linkage and are not exported unless marked with an extern
-                        // inidicator
+                        // indicator
                         && (!Instance::mono(tcx, def_id.to_def_id()).def.generates_cgu_internal_copy(tcx)
                             || tcx.codegen_fn_attrs(def_id.to_def_id()).contains_extern_indicator())
-                    {
-                        Some(def_id)
-                    } else {
-                        None
-                    }
                 }
 
-                _ => None,
+                _ => false,
             }
-        })
+        });
+    let mut reachable_non_generics: DefIdMap<_> = reachable_non_generics
+        .into_iter()
         .map(|def_id| {
             let export_level = if special_runtime_crate {
                 let name = tcx.symbol_name(Instance::mono(tcx, def_id.to_def_id())).name;

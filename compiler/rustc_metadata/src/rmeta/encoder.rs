@@ -1236,39 +1236,37 @@ impl EncodeContext<'a, 'tcx> {
             return;
         }
 
-        let mut keys_and_jobs = self
-            .tcx
+        let tcx = self.tcx;
+        let keys_and_jobs = tcx
             .mir_keys(LOCAL_CRATE)
-            .iter()
+            .to_sorted_vec()
+            .into_iter()
             .filter_map(|&def_id| {
-                let (encode_const, encode_opt) = should_encode_mir(self.tcx, def_id);
-                if encode_const || encode_opt {
-                    Some((def_id, encode_const, encode_opt))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-        // Sort everything to ensure a stable order for diagnotics.
-        keys_and_jobs.sort_by_key(|&(def_id, _, _)| def_id);
-        for (def_id, encode_const, encode_opt) in keys_and_jobs.into_iter() {
+            let (encode_const, encode_opt) = should_encode_mir(tcx, def_id);
+            if encode_const || encode_opt {
+                Some((def_id, encode_const, encode_opt))
+            } else {
+                None
+            }
+        });
+        for (def_id, encode_const, encode_opt) in keys_and_jobs {
             debug_assert!(encode_const || encode_opt);
 
             debug!("EntryBuilder::encode_mir({:?})", def_id);
             if encode_opt {
-                record!(self.tables.mir[def_id.to_def_id()] <- self.tcx.optimized_mir(def_id));
+                record!(self.tables.mir[def_id.to_def_id()] <- tcx.optimized_mir(def_id));
             }
             if encode_const {
-                record!(self.tables.mir_for_ctfe[def_id.to_def_id()] <- self.tcx.mir_for_ctfe(def_id));
+                record!(self.tables.mir_for_ctfe[def_id.to_def_id()] <- tcx.mir_for_ctfe(def_id));
 
-                let abstract_const = self.tcx.mir_abstract_const(def_id);
+                let abstract_const = tcx.mir_abstract_const(def_id);
                 if let Ok(Some(abstract_const)) = abstract_const {
                     record!(self.tables.mir_abstract_consts[def_id.to_def_id()] <- abstract_const);
                 }
             }
-            record!(self.tables.promoted_mir[def_id.to_def_id()] <- self.tcx.promoted_mir(def_id));
+            record!(self.tables.promoted_mir[def_id.to_def_id()] <- tcx.promoted_mir(def_id));
 
-            let unused = self.tcx.unused_generic_params(def_id);
+            let unused = tcx.unused_generic_params(def_id);
             if !unused.is_empty() {
                 record!(self.tables.unused_generic_params[def_id.to_def_id()] <- unused);
             }
@@ -1997,7 +1995,7 @@ fn prefetch_mir(tcx: TyCtxt<'_>) {
         return;
     }
 
-    par_iter(tcx.mir_keys(LOCAL_CRATE)).for_each(|&def_id| {
+    par_iter(tcx.mir_keys(LOCAL_CRATE).to_sorted_vec()).for_each(|&def_id| {
         let (encode_const, encode_opt) = should_encode_mir(tcx, def_id);
 
         if encode_const {

@@ -6,6 +6,7 @@
 // reachable as well.
 
 use rustc_data_structures::fx::FxHashSet;
+use rustc_data_structures::stable_set::StableSet;
 use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::LOCAL_CRATE;
@@ -65,7 +66,7 @@ struct ReachableContext<'tcx> {
     tcx: TyCtxt<'tcx>,
     maybe_typeck_results: Option<&'tcx ty::TypeckResults<'tcx>>,
     // The set of items which must be exported in the linkage sense.
-    reachable_symbols: FxHashSet<LocalDefId>,
+    reachable_symbols: StableSet<LocalDefId>,
     // A worklist of item IDs. Each item ID in this worklist will be inlined
     // and will be scanned for further references.
     // FIXME(eddyb) benchmark if this would be faster as a `VecDeque`.
@@ -386,7 +387,7 @@ impl<'a, 'tcx> ItemLikeVisitor<'tcx> for CollectPrivateImplItemsVisitor<'a, 'tcx
     }
 }
 
-fn reachable_set<'tcx>(tcx: TyCtxt<'tcx>, crate_num: CrateNum) -> FxHashSet<LocalDefId> {
+fn reachable_set<'tcx>(tcx: TyCtxt<'tcx>, crate_num: CrateNum) -> StableSet<LocalDefId> {
     debug_assert!(crate_num == LOCAL_CRATE);
 
     let access_levels = &tcx.privacy_access_levels(LOCAL_CRATE);

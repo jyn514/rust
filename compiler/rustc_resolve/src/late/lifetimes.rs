@@ -513,7 +513,7 @@ fn do_resolve(
         let map = rl.defs.entry(hir_id.owner).or_default();
         map.insert(hir_id.local_id, v);
     }
-    for hir_id in named_region_map.late_bound {
+    for hir_id in named_region_map.late_bound.to_sorted_vec() {
         let map = rl.late_bound.entry(hir_id.owner).or_default();
         map.insert(hir_id.local_id);
     }
@@ -741,9 +741,9 @@ impl<'a, 'tcx> Visitor<'tcx> for LifetimeContext<'a, 'tcx> {
                                 });
                             }
                             for (&owner, late_bound) in resolved_lifetimes.late_bound.iter() {
-                                for &local_id in late_bound.to_sorted_vec() {
+                                late_bound.to_sorted_vec().into_iter().for_each(|&local_id| {
                                     self.map.late_bound.insert(hir::HirId { owner, local_id });
-                                }
+                                });
                             }
                             for (&owner, late_bound_vars) in
                                 resolved_lifetimes.late_bound_vars.iter()

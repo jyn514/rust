@@ -103,4 +103,13 @@ impl<T: Eq + Hash> StableSet<T> {
     {
         self.base.contains(value)
     }
+
+    pub fn difference<'a>(
+        &'a self,
+        other: &'a Self
+    ) -> Vec<&'a T> where T: Ord {
+        let mut vec: Vec<_> = self.base.difference(&other.base).collect();
+        vec.sort_unstable();
+        vec
+    }
 }

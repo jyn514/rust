@@ -1017,6 +1017,6 @@ pub fn dump_mir_def_ids(tcx: TyCtxt<'_>, single: Option<DefId>) -> Vec<DefId> {
     if let Some(i) = single {
         vec![i]
     } else {
-        tcx.mir_keys(LOCAL_CRATE).iter().map(|def_id| def_id.to_def_id()).collect()
+        tcx.mir_keys(LOCAL_CRATE).to_sorted_vec().into_iter().map(|def_id| def_id.to_def_id()).collect()
     }
 }

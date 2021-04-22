@@ -266,7 +266,8 @@ fn add_unused_functions<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>) {
 
     let all_def_ids: DefIdSet = tcx
         .mir_keys(LOCAL_CRATE)
-        .iter()
+        .to_sorted_vec()
+        .into_iter()
         .filter_map(|local_def_id| {
             let def_id = local_def_id.to_def_id();
             if ignore_unused_generics && tcx.generics_of(def_id).requires_monomorphization(tcx) {
@@ -309,13 +310,8 @@ fn add_unused_functions<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>) {
     // Add a new `FunctionCoverage` to the `function_coverage_map`, with unreachable code regions
     // for each region in it's MIR.
 
-    // Convert the `HashSet` of `codegenned_def_ids` to a sortable vector, and sort them.
-    let mut sorted_codegenned_def_ids: Vec<DefId> =
-        codegenned_def_ids.iter().map(|def_id| *def_id).collect();
-    sorted_codegenned_def_ids.sort_unstable();
-
     let mut first_covered_def_id_by_file: FxHashMap<Symbol, DefId> = FxHashMap::default();
-    for &def_id in sorted_codegenned_def_ids.iter() {
+    for &def_id in codegenned_def_ids.to_sorted_vec() {
         if let Some(covered_file_name) = tcx.covered_file_name(def_id) {
             // Only add files known to have unused functions
             if unused_def_ids_by_file.contains_key(covered_file_name) {

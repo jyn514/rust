@@ -703,6 +703,10 @@ impl<'tcx> TypeckResults<'tcx> {
     pub fn set_coercion_cast(&mut self, id: ItemLocalId) {
         self.coercion_casts.insert(id);
     }
+    
+    pub fn add_coercion_casts(&mut self, iter: impl IntoIterator<Item = ItemLocalId>) {
+        self.coercion_casts.extend(iter)
+    }
 
     pub fn coercion_casts(&self) -> &ItemLocalSet {
         &self.coercion_casts

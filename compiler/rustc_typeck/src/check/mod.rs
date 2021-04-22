@@ -102,6 +102,7 @@ pub use inherited::{Inherited, InheritedBuilder};
 use crate::astconv::AstConv;
 use crate::check::gather_locals::GatherLocalsVisitor;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
+use rustc_data_structures::stable_set::StableSet;
 use rustc_errors::{pluralize, struct_span_err, Applicability};
 use rustc_hir as hir;
 use rustc_hir::def::Res;
@@ -327,7 +328,7 @@ fn has_typeck_results(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
     }
 }
 
-fn used_trait_imports(tcx: TyCtxt<'_>, def_id: LocalDefId) -> &FxHashSet<LocalDefId> {
+fn used_trait_imports(tcx: TyCtxt<'_>, def_id: LocalDefId) -> &StableSet<LocalDefId> {
     &*tcx.typeck(def_id).used_trait_imports
 }
 

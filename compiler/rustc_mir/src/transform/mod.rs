@@ -1,6 +1,7 @@
 use crate::{shim, util};
 use required_consts::RequiredConstsVisitor;
 use rustc_data_structures::fx::FxHashSet;
+use rustc_data_structures::stable_set::StableSet;
 use rustc_data_structures::steal::Steal;
 use rustc_hir as hir;
 use rustc_hir::def_id::{CrateNum, DefId, LocalDefId, LOCAL_CRATE};
@@ -103,10 +104,10 @@ fn is_mir_available(tcx: TyCtxt<'_>, def_id: DefId) -> bool {
 
 /// Finds the full set of `DefId`s within the current crate that have
 /// MIR associated with them.
-fn mir_keys(tcx: TyCtxt<'_>, krate: CrateNum) -> FxHashSet<LocalDefId> {
+fn mir_keys(tcx: TyCtxt<'_>, krate: CrateNum) -> StableSet<LocalDefId> {
     assert_eq!(krate, LOCAL_CRATE);
 
-    let mut set = FxHashSet::default();
+    let mut set = StableSet::default();
 
     // All body-owners have MIR associated with them.
     set.extend(tcx.body_owners());
@@ -115,7 +116,7 @@ fn mir_keys(tcx: TyCtxt<'_>, krate: CrateNum) -> FxHashSet<LocalDefId> {
     // they don't have a BodyId, so we need to build them separately.
     struct GatherCtors<'a, 'tcx> {
         tcx: TyCtxt<'tcx>,
-        set: &'a mut FxHashSet<LocalDefId>,
+        set: &'a mut StableSet<LocalDefId>,
     }
     impl<'a, 'tcx> Visitor<'tcx> for GatherCtors<'a, 'tcx> {
         fn visit_variant_data(

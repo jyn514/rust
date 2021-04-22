@@ -13,7 +13,7 @@ pub fn check_crate(tcx: TyCtxt<'_>) {
         let item_def_id = tcx.hir().body_owner_def_id(body_id);
         let imports = tcx.used_trait_imports(item_def_id);
         debug!("GatherVisitor: item_def_id={:?} with imports {:#?}", item_def_id, imports);
-        used_trait_imports.extend(imports.iter());
+        used_trait_imports.extend(imports.to_sorted_vec());
     }
 
     let mut visitor = CheckVisitor { tcx, used_trait_imports };
