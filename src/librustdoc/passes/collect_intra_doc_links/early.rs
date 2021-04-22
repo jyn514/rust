@@ -587,7 +587,7 @@ impl IntraLinkCrateLoader {
             }
             None => {
                 // Try everything!
-                let mut candidates = PerNS {
+                let candidates = PerNS {
                     macro_ns: self
                         .resolve_macro(path_str, base_node)
                         .map(|res| EarlyRes::Resolved(res, extra_fragment.clone())),
@@ -623,33 +623,34 @@ impl IntraLinkCrateLoader {
                         Err(other) => return Err(other),
                     }
                 };
+                Ok(EarlyRes::UnknownNamespace(candidates))
 
-                let len = candidates.iter().filter(|res| res.is_ok()).count();
+                // let len = candidates.iter().filter(|res| res.is_ok()).count();
 
-                if len == 0 {
-                    return Err(LinkError::Resolution(
-                        candidates.into_iter().filter_map(|res| res.err()).collect(),
-                        path_str.to_string(),
-                        disambiguator,
-                    ));
-                }
+                // if len == 0 {
+                //     return Err(LinkError::Resolution(
+                //         candidates.into_iter().filter_map(|res| res.err()).collect(),
+                //         path_str.to_string(),
+                //         disambiguator,
+                //     ));
+                // }
 
-                if len == 1 {
-                    Some(candidates.into_iter().filter_map(|res| res.ok()).next().unwrap())
-                } else if len == 2 && is_derive_trait_collision(&candidates) {
-                    Some(candidates.type_ns.unwrap())
-                } else {
-                    if is_derive_trait_collision(&candidates) {
-                        candidates.macro_ns = Err(ResolutionFailure::Dummy);
-                    }
-                    // If we're reporting an ambiguity, don't mention the namespaces that failed
-                    let candidates = candidates.map(|candidate| candidate.ok().map(|(res, _)| res));
-                    Err(LinkError::Ambiguous(candidates, path_str.to_string()))
-                }
+                // if len == 1 {
+                //     Some(candidates.into_iter().filter_map(|res| res.ok()).next().unwrap())
+                // } else if len == 2 && is_derive_trait_collision(&candidates) {
+                //     Some(candidates.type_ns.unwrap())
+                // } else {
+                //     if is_derive_trait_collision(&candidates) {
+                //         candidates.macro_ns = Err(ResolutionFailure::Dummy);
+                //     }
+                //     // If we're reporting an ambiguity, don't mention the namespaces that failed
+                //     let candidates = candidates.map(|candidate| candidate.ok().map(|(res, _)| res));
+                //     Err(LinkError::Ambiguous(candidates, path_str.to_string()))
+                // }
             }
             Some(MacroNS) => {
                 match self.resolve_macro(path_str, base_node) {
-                    Ok(res) => Some((res, extra_fragment.clone())),
+                    Ok(res) => Ok(EarlyRes::Resolved(res, extra_fragment.clone())),
                     Err(mut kind) => {
                         // `resolve_macro` only looks in the macro namespace. Try to give a better error if possible.
                         for &ns in &[TypeNS, ValueNS] {
@@ -661,8 +662,7 @@ impl IntraLinkCrateLoader {
                                 break;
                             }
                         }
-                        resolution_failure(self, diag, path_str, disambiguator, smallvec![kind]);
-                        None
+                        Err(LinkError::Resolution(kind, path_str.to_string(), disambiguator))
                     }
                 }
             }

@@ -71,6 +71,8 @@ crate enum EarlyRes {
     Resolved(Res, Option<String>),
     Unresolved(UnresolvedLink),
     UnresolvedVariant(Res),
+    // TODO: maybe there should be a separate enum for this?
+    UnknownNamespace(PerNS<Box<LinkResult<EarlyRes>>>),
 }
 
 #[derive(Debug)]
@@ -251,7 +253,7 @@ impl ResolutionFailure<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum AnchorFailure {
     /// User error: `[std#x#y]` is not valid
     MultipleAnchors,
@@ -391,7 +393,7 @@ fn is_derive_trait_collision<T>(ns: &PerNS<Result<(Res, T), ResolutionFailure<'_
 
 type LinkResult<T> = std::result::Result<T, LinkError>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum LinkError {
     Anchor(AnchorFailure),
     Disambiguator(Range<usize>, String),

@@ -216,7 +216,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                             Err(ResolutionFailure::NotResolved {
                                 module_id,
                                 partial_res: Some(Res::Def(DefKind::Enum, def.did)),
-                                unresolved: variant_field_name.into(),
+                                unresolved: variant_field_name.to_string().into(),
                             }
                             .into())
                         }
@@ -227,7 +227,7 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             _ => Err(ResolutionFailure::NotResolved {
                 module_id,
                 partial_res: Some(variant_res),
-                unresolved: variant_name.into(),
+                unresolved: variant_name.to_string().into(),
             }
             .into()),
         }
