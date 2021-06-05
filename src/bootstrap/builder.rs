@@ -1574,6 +1574,7 @@ impl<'a> Builder<'a> {
                 path: step.path(self),
                 // FIXME: top_stage might be higher than the stage of the step
                 stage: self.top_stage,
+                test_args: self.config.cmd.test_args().into_iter().map(String::from).collect(),
             };
             // NOTE: don't hold onto this guard, it will cause a deadlock if the current step calls `ensure` recursively.
             let old_instructions = CURRENT_INSTRUCTIONS
@@ -1614,6 +1615,7 @@ struct ReplicationStep {
     name: &'static str,
     path: PathBuf,
     stage: u32,
+    test_args: Vec<String>,
 }
 
 lazy_static! {
@@ -1638,13 +1640,17 @@ pub(crate) extern "C" fn print_replication_steps() {
         let _ = stdout.set_color(&blue);
         let _ = write!(stdout, "help");
         let _ = stdout.reset();
-        let _ = writeln!(
+        let _ = write!(
             stdout,
-            ": to replicate this failure, run `./x.py {} {} --stage {}`",
+            ": to replicate this failure, run `./x.py {} {} --stage {}",
             step.cmd,
             step.path.display(),
             step.stage,
         );
+        for arg in step.test_args {
+            let _ = write!(stdout, " --test-args \"{}\"", arg);
+        }
+        let _ = writeln!(stdout, "`");
     }
 }
 

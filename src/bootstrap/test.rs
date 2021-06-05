@@ -1151,6 +1151,11 @@ impl Step for Compiletest {
         run.never()
     }
 
+    fn path(&self, _builder: &Builder<'_>) -> PathBuf {
+        // FIXME: it would be nice to suggest exactly the tests that fail, but that info isn't known without first running compiletest.
+        self.path.into()
+    }
+
     /// Executes the `compiletest` tool to run a suite of tests.
     ///
     /// Compiles all tests with `compiler` for `target` with the specified
