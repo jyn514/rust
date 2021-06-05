@@ -63,8 +63,15 @@ pub trait Step: 'static + Clone + Debug + PartialEq + Eq + Hash {
     /// If true, then this rule should be skipped if --target was specified, but --host was not
     const ONLY_HOSTS: bool = false;
 
+    /// A user-visible name to display if this step fails.
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
+    }
+
+    /// The path that should be used on the command line to run this step.
+    fn path(&self, builder: &Builder<'_>) -> PathBuf {
+        let paths = Self::should_run(ShouldRun::new(builder)).paths;
+        paths.iter().map(|pathset| pathset.path(builder)).next().expect("no paths for step")
     }
 
     /// Primary function to execute this rule. Can call `builder.ensure()`
@@ -1560,13 +1567,13 @@ impl<'a> Builder<'a> {
         }
 
         let (out, dur) = {
-            let paths = S::should_run(ShouldRun::new(self)).paths;
-            let path = paths.iter().map(|pathset| pathset.path(self)).next();
             let instructions = ReplicationStep {
                 color: self.build.config.color,
-                name: step.name(),
                 cmd: self.kind,
-                path: path.expect("no paths for step"),
+                name: step.name(),
+                path: step.path(self),
+                // FIXME: top_stage might be higher than the stage of the step
+                stage: self.top_stage,
             };
             // NOTE: don't hold onto this guard, it will cause a deadlock if the current step calls `ensure` recursively.
             let old_instructions = CURRENT_INSTRUCTIONS
@@ -1606,6 +1613,7 @@ struct ReplicationStep {
     cmd: Kind,
     name: &'static str,
     path: PathBuf,
+    stage: u32,
 }
 
 lazy_static! {
@@ -1632,9 +1640,10 @@ pub(crate) extern "C" fn print_replication_steps() {
         let _ = stdout.reset();
         let _ = writeln!(
             stdout,
-            ": to replicate this failure, run `./x.py {} {}`",
+            ": to replicate this failure, run `./x.py {} {} --stage {}`",
             step.cmd,
-            step.path.display()
+            step.path.display(),
+            step.stage,
         );
     }
 }
