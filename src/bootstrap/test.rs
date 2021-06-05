@@ -1824,7 +1824,7 @@ impl Step for CrateLibrustc {
                     target: run.target,
                     test_kind,
                     krate_name: krate.name,
-                    krate_path: krate.path.clone(),
+                    krate_path: krate.local_path(builder.build),
                 });
             }
         }
@@ -1873,7 +1873,7 @@ impl Step for Crate {
                 mode,
                 test_kind,
                 krate_name: krate.name,
-                krate_path: krate.path.clone(),
+                krate_path: krate.local_path(builder.build),
             });
         };
 
