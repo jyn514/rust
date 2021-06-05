@@ -9,12 +9,14 @@ use std::process;
 
 use build_helper::t;
 use getopts::Options;
+use termcolor::ColorChoice;
 
 use crate::builder::Builder;
 use crate::config::{Config, TargetSelection};
 use crate::setup::Profile;
 use crate::{Build, DocTests};
 
+#[derive(Copy, Clone)]
 pub enum Color {
     Always,
     Never,
@@ -24,6 +26,16 @@ pub enum Color {
 impl Default for Color {
     fn default() -> Self {
         Self::Auto
+    }
+}
+
+impl From<Color> for ColorChoice {
+    fn from(c: Color) -> Self {
+        match c {
+            Color::Always => ColorChoice::Always,
+            Color::Never => ColorChoice::Never,
+            Color::Auto => ColorChoice::Auto,
+        }
     }
 }
 

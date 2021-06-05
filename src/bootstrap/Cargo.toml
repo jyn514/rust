@@ -50,6 +50,7 @@ time = "0.1"
 ignore = "0.4.10"
 opener = "0.4"
 merge = "0.1.0"
+termcolor = "1.0"
 
 [target.'cfg(windows)'.dependencies.winapi]
 version = "0.3"
