@@ -83,7 +83,7 @@ pub struct Queries<'tcx> {
     register_plugins: Query<(ast::Crate, Lrc<LintStore>)>,
     expansion: Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>, Lrc<LintStore>)>,
     dep_graph: Query<DepGraph>,
-    lower_to_hir: Query<(&'tcx Crate<'tcx>, Steal<ResolverOutputs>)>,
+    lower_to_hir: Query<(&'tcx Crate<'tcx>, ResolverOutputs)>,
     prepare_outputs: Query<OutputFilenames>,
     global_ctxt: Query<QueryContext<'tcx>>,
     ongoing_codegen: Query<Box<dyn Any>>,
@@ -219,7 +219,7 @@ impl<'tcx> Queries<'tcx> {
         })
     }
 
-    pub fn lower_to_hir(&'tcx self) -> Result<&Query<(&'tcx Crate<'tcx>, Steal<ResolverOutputs>)>> {
+    pub fn lower_to_hir(&'tcx self) -> Result<&Query<(&'tcx Crate<'tcx>, ResolverOutputs)>> {
         self.lower_to_hir.compute(|| {
             let expansion_result = self.expansion()?;
             let peeked = expansion_result.peek();
@@ -237,7 +237,7 @@ impl<'tcx> Queries<'tcx> {
                 ))
             })?;
             let hir = self.hir_arena.alloc(hir);
-            Ok((hir, Steal::new(BoxedResolver::to_resolver_outputs(resolver))))
+            Ok((hir, BoxedResolver::to_resolver_outputs(resolver)))
         })
     }
 
@@ -271,7 +271,7 @@ impl<'tcx> Queries<'tcx> {
                 lint_store,
                 krate,
                 dep_graph,
-                resolver_outputs.steal(),
+                resolver_outputs,
                 outputs,
                 &crate_name,
                 &self.queries,
