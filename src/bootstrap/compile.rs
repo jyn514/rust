@@ -1359,11 +1359,11 @@ pub fn stream_cargo(
     // Make sure Cargo actually succeeded after we read all of its stdout.
     let status = t!(child.wait());
     if !status.success() {
-        eprintln!(
+        builder.build.verbose(&format!(
             "command did not execute successfully: {:?}\n\
                   expected success, got: {}",
             cargo, status
-        );
+        ));
     }
     status.success()
 }
