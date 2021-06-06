@@ -13,6 +13,7 @@ use rustc_data_structures::{box_region_allow_access, declare_box_region_type, pa
 use rustc_errors::{ErrorReported, PResult};
 use rustc_expand::base::ExtCtxt;
 use rustc_hir::def_id::{StableCrateId, LOCAL_CRATE};
+use rustc_hir::definitions::Definitions;
 use rustc_hir::Crate;
 use rustc_lint::LintStore;
 use rustc_metadata::creader::CStore;
@@ -137,15 +138,6 @@ pub fn configure_and_expand(
         resolver.into_outputs()
     });
     result.map(|k| (k, resolver))
-}
-
-impl BoxedResolver {
-    pub fn to_resolver_outputs(resolver: Rc<RefCell<BoxedResolver>>) -> ResolverOutputs {
-        match Rc::try_unwrap(resolver) {
-            Ok(resolver) => resolver.into_inner().complete(),
-            Err(resolver) => resolver.borrow_mut().access(|resolver| resolver.clone_outputs()),
-        }
-    }
 }
 
 pub fn register_plugins<'a>(
@@ -558,7 +550,7 @@ fn escape_dep_env(symbol: Symbol) -> String {
 
 fn write_out_deps(
     sess: &Session,
-    boxed_resolver: &Steal<Rc<RefCell<BoxedResolver>>>,
+    boxed_resolver: &BoxedResolver,
     outputs: &OutputFilenames,
     out_filenames: &[PathBuf],
 ) {
@@ -585,7 +577,7 @@ fn write_out_deps(
         }
 
         if sess.binary_dep_depinfo() {
-            boxed_resolver.borrow().borrow_mut().access(|resolver| {
+            boxed_resolver.access(|resolver| {
                 for cnum in resolver.cstore().crates_untracked() {
                     let source = resolver.cstore().crate_source_untracked(cnum);
                     if let Some((path, _)) = source.dylib {
@@ -654,7 +646,7 @@ pub fn prepare_outputs(
     sess: &Session,
     compiler: &Compiler,
     krate: &ast::Crate,
-    boxed_resolver: &Steal<Rc<RefCell<BoxedResolver>>>,
+    boxed_resolver: &BoxedResolver,
     crate_name: &str,
 ) -> Result<OutputFilenames> {
     let _timer = sess.timer("prepare_outputs");
@@ -760,18 +752,21 @@ pub fn create_global_ctxt<'tcx>(
     lint_store: Lrc<LintStore>,
     krate: &'tcx Crate<'tcx>,
     dep_graph: DepGraph,
-    resolver_outputs: &ResolverOutputs,
+    resolver: &BoxedResolver,
     outputs: OutputFilenames,
     crate_name: &str,
     queries: &'tcx OnceCell<TcxQueries<'tcx>>,
     global_ctxt: &'tcx OnceCell<GlobalCtxt<'tcx>>,
     arena: &'tcx WorkerLocal<Arena<'tcx>>,
 ) -> QueryContext<'tcx> {
+    use rustc_ast_lowering::ResolverAstLowering;
+
     let sess = &compiler.session();
 
-    let def_path_table = resolver_outputs.definitions.def_path_table();
-    let query_result_on_disk_cache =
-        rustc_incremental::load_query_result_cache(sess, def_path_table);
+    let query_result_on_disk_cache = resolver.access(|resolver| {
+        let def_path_table = resolver.definitions().def_path_table();
+        rustc_incremental::load_query_result_cache(sess, def_path_table)
+    });
 
     let codegen_backend = compiler.codegen_backend();
     let mut local_providers = *DEFAULT_QUERY_PROVIDERS;

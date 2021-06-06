@@ -81,9 +81,9 @@ pub struct Queries<'tcx> {
     parse: Query<ast::Crate>,
     crate_name: Query<String>,
     register_plugins: Query<(ast::Crate, Lrc<LintStore>)>,
-    expansion: Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>, Lrc<LintStore>)>,
+    expansion: Query<(ast::Crate, BoxedResolver, Lrc<LintStore>)>,
     dep_graph: Query<DepGraph>,
-    lower_to_hir: Query<(&'tcx Crate<'tcx>, ResolverOutputs)>,
+    lower_to_hir: Query<&'tcx Crate<'tcx>>,
     prepare_outputs: Query<OutputFilenames>,
     global_ctxt: Query<QueryContext<'tcx>>,
     ongoing_codegen: Query<Box<dyn Any>>,
@@ -174,7 +174,7 @@ impl<'tcx> Queries<'tcx> {
 
     pub fn expansion(
         &self,
-    ) -> Result<&Query<(ast::Crate, Steal<Rc<RefCell<BoxedResolver>>>, Lrc<LintStore>)>> {
+    ) -> Result<&Query<(ast::Crate, BoxedResolver, Lrc<LintStore>)>> {
         tracing::trace!("expansion");
         self.expansion.compute(|| {
             let crate_name = self.crate_name()?.peek().clone();
@@ -188,7 +188,7 @@ impl<'tcx> Queries<'tcx> {
                 &crate_name,
             )
             .map(|(krate, resolver)| {
-                (krate, Steal::new(Rc::new(RefCell::new(resolver))), lint_store)
+                (krate, resolver, lint_store)
             })
         })
     }
@@ -219,14 +219,14 @@ impl<'tcx> Queries<'tcx> {
         })
     }
 
-    pub fn lower_to_hir(&'tcx self) -> Result<&Query<(&'tcx Crate<'tcx>, ResolverOutputs)>> {
+    pub fn lower_to_hir(&'tcx self) -> Result<&Query<&'tcx Crate<'tcx>>> {
         self.lower_to_hir.compute(|| {
             let expansion_result = self.expansion()?;
-            let peeked = expansion_result.peek();
+            let peeked = expansion_result.peek_mut();
             let krate = &peeked.0;
-            let resolver = peeked.1.steal();
+            let resolver = peeked.1;
             let lint_store = &peeked.2;
-            let hir = resolver.borrow_mut().access(|resolver| {
+            let hir = resolver.access(|resolver| {
                 Ok(passes::lower_to_hir(
                     self.session(),
                     lint_store,
@@ -237,7 +237,7 @@ impl<'tcx> Queries<'tcx> {
                 ))
             })?;
             let hir = self.hir_arena.alloc(hir);
-            Ok((hir, BoxedResolver::to_resolver_outputs(resolver)))
+            Ok(hir)
         })
     }
 
@@ -261,17 +261,17 @@ impl<'tcx> Queries<'tcx> {
         self.global_ctxt.compute(|| {
             let crate_name = self.crate_name()?.peek().clone();
             let outputs = self.prepare_outputs()?.peek().clone();
-            let lint_store = self.expansion()?.peek().2.clone();
+            let (_, resolver, lint_store) = &*self.expansion()?.peek();
             let hir = self.lower_to_hir()?.peek();
             let dep_graph = self.dep_graph()?.peek().clone();
-            let (ref krate, ref resolver_outputs) = &*hir;
+            let ref krate = &*hir;
             let _timer = self.session().timer("create_global_ctxt");
             Ok(passes::create_global_ctxt(
                 self.compiler,
-                lint_store,
+                lint_store.clone(),
                 krate,
                 dep_graph,
-                resolver_outputs,
+                resolver,
                 outputs,
                 &crate_name,
                 &self.queries,
