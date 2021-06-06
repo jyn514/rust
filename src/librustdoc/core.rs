@@ -39,12 +39,8 @@ crate use rustc_session::config::{DebuggingOptions, Input, Options};
 
 crate struct DocContext<'tcx> {
     crate tcx: TyCtxt<'tcx>,
-    /// Name resolver. Used for intra-doc links.
-    ///
-    /// The `Rc<RefCell<...>>` wrapping is needed because that is what's returned by
-    /// [`Queries::expansion()`].
-    // FIXME: see if we can get rid of this RefCell somehow
-    crate resolver: Rc<RefCell<interface::BoxedResolver>>,
+    /// Queries, used for access to the resolver for intra-doc links.
+    crate queries: &'tcx Queries<'tcx>,
     /// Used for normalization.
     ///
     /// Most of this logic is copied from rustc_lint::late.
@@ -99,7 +95,7 @@ impl<'tcx> DocContext<'tcx> {
     where
         F: FnOnce(&mut resolve::Resolver<'_>) -> R,
     {
-        self.resolver.borrow_mut().access(f)
+        self.queries.expansion().expect("expansion should succeed").peek_mut().1.access(f)
     }
 
     /// Call the closure with the given parameters set as
@@ -298,23 +294,24 @@ crate fn create_config(
     }
 }
 
-crate fn create_resolver<'a>(
-    queries: &Queries<'a>,
-    sess: &Session,
-) -> Rc<RefCell<interface::BoxedResolver>> {
-    let parts = abort_on_err(queries.expansion(), sess).peek();
-    let (krate, resolver, _) = &*parts;
-    let resolver = resolver.borrow().clone();
+// crate fn create_resolver<'a>(
+//     queries: &Queries<'a>,
+//     sess: &Session,
+// ) -> Rc<RefCell<interface::BoxedResolver>> {
+//     let parts = abort_on_err(queries.expansion(), sess).peek();
+//     let (krate, resolver, _) = &*parts;
+//     let resolver = resolver.borrow().clone();
 
-    let mut loader = crate::passes::collect_intra_doc_links::IntraLinkCrateLoader::new(resolver);
-    ast::visit::walk_crate(&mut loader, krate);
+//     let mut loader = crate::passes::collect_intra_doc_links::IntraLinkCrateLoader::new(resolver);
+//     ast::visit::walk_crate(&mut loader, krate);
 
-    loader.resolver
-}
+//     loader.resolver
+// }
 
-crate fn run_global_ctxt(
-    tcx: TyCtxt<'_>,
-    resolver: Rc<RefCell<interface::BoxedResolver>>,
+crate fn run_global_ctxt<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    queries: &'tcx Queries<'tcx>,
+    // resolver: Rc<RefCell<interface::BoxedResolver>>,
     mut default_passes: passes::DefaultPassOption,
     manual_passes: Vec<String>,
     render_options: RenderOptions,
@@ -361,7 +358,7 @@ crate fn run_global_ctxt(
 
     let mut ctxt = DocContext {
         tcx,
-        resolver,
+        queries,
         param_env: ParamEnv::empty(),
         external_traits: Default::default(),
         active_extern_traits: Default::default(),

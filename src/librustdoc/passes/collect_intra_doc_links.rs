@@ -728,7 +728,7 @@ fn resolve_associated_trait_item(
 /// NOTE: this cannot be a query because more traits could be available when more crates are compiled!
 /// So it is not stable to serialize cross-crate.
 fn traits_implemented_by(cx: &mut DocContext<'_>, type_: DefId, module: DefId) -> FxHashSet<DefId> {
-    let mut resolver = cx.resolver.borrow_mut();
+    let mut resolver = &mut cx.queries.expansion().expect("expansion should succeed").peek_mut().1;
     let in_scope_traits = cx.module_trait_cache.entry(module).or_insert_with(|| {
         resolver.access(|resolver| {
             let parent_scope = &ParentScope::module(resolver.get_module(module), resolver);
