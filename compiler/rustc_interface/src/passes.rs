@@ -92,6 +92,12 @@ declare_box_region_type!(
     (&mut Resolver<'_>) -> (Result<ast::Crate>, ResolverOutputs)
 );
 
+impl rustc_middle::ty::Resolver for BoxedResolver {
+    fn resolver_outputs(&self) -> &rustc_middle::ty::ResolverOutputs {
+        todo!()
+    }
+}
+
 /// Runs the "early phases" of the compiler: initial `cfg` processing, loading compiler plugins,
 /// syntax expansion, secondary `cfg` expansion, synthesis of a test
 /// harness if one is to be provided, injection of a dependency on the
@@ -550,7 +556,7 @@ fn escape_dep_env(symbol: Symbol) -> String {
 
 fn write_out_deps(
     sess: &Session,
-    boxed_resolver: &BoxedResolver,
+    boxed_resolver: &mut BoxedResolver,
     outputs: &OutputFilenames,
     out_filenames: &[PathBuf],
 ) {
@@ -646,7 +652,7 @@ pub fn prepare_outputs(
     sess: &Session,
     compiler: &Compiler,
     krate: &ast::Crate,
-    boxed_resolver: &BoxedResolver,
+    boxed_resolver: &mut BoxedResolver,
     crate_name: &str,
 ) -> Result<OutputFilenames> {
     let _timer = sess.timer("prepare_outputs");
@@ -752,7 +758,7 @@ pub fn create_global_ctxt<'tcx>(
     lint_store: Lrc<LintStore>,
     krate: &'tcx Crate<'tcx>,
     dep_graph: DepGraph,
-    resolver: &BoxedResolver,
+    resolver: &'tcx BoxedResolver,
     outputs: OutputFilenames,
     crate_name: &str,
     queries: &'tcx OnceCell<TcxQueries<'tcx>>,
@@ -788,7 +794,7 @@ pub fn create_global_ctxt<'tcx>(
                 sess,
                 lint_store,
                 arena,
-                // resolver_outputs,
+                resolver,
                 krate,
                 dep_graph,
                 query_result_on_disk_cache,

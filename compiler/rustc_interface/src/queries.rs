@@ -222,10 +222,7 @@ impl<'tcx> Queries<'tcx> {
     pub fn lower_to_hir(&'tcx self) -> Result<&Query<&'tcx Crate<'tcx>>> {
         self.lower_to_hir.compute(|| {
             let expansion_result = self.expansion()?;
-            let peeked = expansion_result.peek_mut();
-            let krate = &peeked.0;
-            let resolver = peeked.1;
-            let lint_store = &peeked.2;
+            let (krate, resolver, lint_store) = &mut *expansion_result.peek_mut();
             let hir = resolver.access(|resolver| {
                 Ok(passes::lower_to_hir(
                     self.session(),
@@ -244,14 +241,14 @@ impl<'tcx> Queries<'tcx> {
     pub fn prepare_outputs(&self) -> Result<&Query<OutputFilenames>> {
         self.prepare_outputs.compute(|| {
             let expansion_result = self.expansion()?;
-            let (krate, boxed_resolver, _) = &*expansion_result.peek();
+            let (krate, boxed_resolver, _) = &mut *expansion_result.peek_mut();
             let crate_name = self.crate_name()?;
             let crate_name = crate_name.peek();
             passes::prepare_outputs(
                 self.session(),
                 self.compiler,
                 &krate,
-                &boxed_resolver,
+                boxed_resolver,
                 &crate_name,
             )
         })
@@ -261,14 +258,15 @@ impl<'tcx> Queries<'tcx> {
         self.global_ctxt.compute(|| {
             let crate_name = self.crate_name()?.peek().clone();
             let outputs = self.prepare_outputs()?.peek().clone();
-            let (_, resolver, lint_store) = &*self.expansion()?.peek();
+            let lint_store = self.expansion()?.peek().2.clone();
+            let resolver = std::cell::Ref::map(&mut *self.expansion()?.peek(), |x| x.1);
             let hir = self.lower_to_hir()?.peek();
             let dep_graph = self.dep_graph()?.peek().clone();
             let ref krate = &*hir;
             let _timer = self.session().timer("create_global_ctxt");
             Ok(passes::create_global_ctxt(
                 self.compiler,
-                lint_store.clone(),
+                lint_store,
                 krate,
                 dep_graph,
                 resolver,

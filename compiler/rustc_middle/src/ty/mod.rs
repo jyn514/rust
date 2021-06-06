@@ -112,6 +112,7 @@ mod sty;
 
 // Data types
 
+pub use context::Resolver;
 pub struct ResolverOutputs {
     pub definitions: rustc_hir::definitions::Definitions,
     pub cstore: Box<CrateStoreDyn>,
