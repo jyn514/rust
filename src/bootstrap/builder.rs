@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 
 use build_helper::{output, t};
 use lazy_static::lazy_static;
-use termcolor::{ColorSpec, WriteColor};
 
 use crate::cache::{Cache, Interned, INTERNER};
 use crate::check;
@@ -1568,7 +1567,6 @@ impl<'a> Builder<'a> {
 
         let (out, dur) = {
             let instructions = ReplicationStep {
-                color: self.build.config.color,
                 cmd: self.kind,
                 name: step.name(),
                 path: step.path(self),
@@ -1610,7 +1608,6 @@ impl<'a> Builder<'a> {
 }
 
 struct ReplicationStep {
-    color: Color,
     cmd: Kind,
     name: &'static str,
     path: PathBuf,
@@ -1623,34 +1620,20 @@ lazy_static! {
 }
 
 pub(crate) extern "C" fn print_replication_steps() {
-    use std::io::Write;
     if let Some(step) = CURRENT_INSTRUCTIONS.lock().expect("mutex guard is dropped on panic").take()
     {
-        let mut stdout = termcolor::StandardStream::stdout(step.color.into());
         // ignore errors; we're exiting anyway
-        let mut yellow = ColorSpec::new();
-        yellow.set_fg(Some(termcolor::Color::Yellow));
-        let _ = stdout.set_color(&yellow);
-        let _ = write!(stdout, "note");
-        let _ = stdout.reset();
-        let _ = writeln!(stdout, ": failed while building {}", step.name);
-
-        let mut blue = ColorSpec::new();
-        blue.set_fg(Some(termcolor::Color::Blue));
-        let _ = stdout.set_color(&blue);
-        let _ = write!(stdout, "help");
-        let _ = stdout.reset();
-        let _ = write!(
-            stdout,
-            ": to replicate this failure, run `./x.py {} {} --stage {}",
+        println!("note: failed while building {}", step.name);
+        print!(
+            "help: to replicate this failure, run `./x.py {} {} --stage {}",
             step.cmd,
             step.path.display(),
             step.stage,
         );
         for arg in step.test_args {
-            let _ = write!(stdout, " --test-args \"{}\"", arg);
+            print!(" --test-args \"{}\"", arg);
         }
-        let _ = writeln!(stdout, "`");
+        println!("`");
     }
 }
 

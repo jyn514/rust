@@ -183,7 +183,6 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
- "termcolor",
  "time",
  "toml",
  "winapi 0.3.9",
