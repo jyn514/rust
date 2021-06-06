@@ -932,8 +932,9 @@ impl<'tcx> Deref for TyCtxt<'tcx> {
     }
 }
 
-pub trait Resolver {
-    fn resolver_outputs(&self) -> &ty::ResolverOutputs;
+pub trait Resolver<'tcx> {
+    type Output: Deref<Target = ty::ResolverOutputs>;
+    fn resolver_outputs(&'tcx self) -> Self::Output;
 }
 
 pub struct GlobalCtxt<'tcx> {
@@ -1133,7 +1134,7 @@ impl<'tcx> TyCtxt<'tcx> {
         s: &'tcx Session,
         lint_store: Lrc<dyn Any + sync::Send + sync::Sync>,
         arena: &'tcx WorkerLocal<Arena<'tcx>>,
-        resolver: &'tcx impl Resolver,
+        resolver: &'tcx impl Resolver<'tcx>,
         krate: &'tcx hir::Crate<'tcx>,
         dep_graph: DepGraph,
         on_disk_cache: Option<query::OnDiskCache<'tcx>>,

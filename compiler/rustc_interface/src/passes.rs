@@ -92,8 +92,9 @@ declare_box_region_type!(
     (&mut Resolver<'_>) -> (Result<ast::Crate>, ResolverOutputs)
 );
 
-impl rustc_middle::ty::Resolver for BoxedResolver {
-    fn resolver_outputs(&self) -> &rustc_middle::ty::ResolverOutputs {
+impl<'tcx> rustc_middle::ty::Resolver<'tcx> for BoxedResolver {
+    type Output = &'tcx rustc_middle::ty::ResolverOutputs;
+    fn resolver_outputs(&'tcx self) -> Self::Output {
         todo!()
     }
 }
@@ -758,7 +759,8 @@ pub fn create_global_ctxt<'tcx>(
     lint_store: Lrc<LintStore>,
     krate: &'tcx Crate<'tcx>,
     dep_graph: DepGraph,
-    resolver: &'tcx BoxedResolver,
+    // resolver: &'tcx BoxedResolver,
+    resolver: &'tcx impl rustc_middle::ty::Resolver<'tcx>,
     outputs: OutputFilenames,
     crate_name: &str,
     queries: &'tcx OnceCell<TcxQueries<'tcx>>,
@@ -769,10 +771,9 @@ pub fn create_global_ctxt<'tcx>(
 
     let sess = &compiler.session();
 
-    let query_result_on_disk_cache = resolver.access(|resolver| {
-        let def_path_table = resolver.definitions().def_path_table();
-        rustc_incremental::load_query_result_cache(sess, def_path_table)
-    });
+    let resolutions = resolver.resolver_outputs();
+    let def_path_table = resolutions.definitions.def_path_table();
+    let query_result_on_disk_cache = rustc_incremental::load_query_result_cache(sess, def_path_table);
 
     let codegen_backend = compiler.codegen_backend();
     let mut local_providers = *DEFAULT_QUERY_PROVIDERS;

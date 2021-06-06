@@ -13,7 +13,7 @@ use rustc_incremental::DepGraphFuture;
 use rustc_lint::LintStore;
 use rustc_middle::arena::Arena;
 use rustc_middle::dep_graph::DepGraph;
-use rustc_middle::ty::{GlobalCtxt, ResolverOutputs, TyCtxt};
+use rustc_middle::ty::{GlobalCtxt, Resolver, ResolverOutputs, TyCtxt};
 use rustc_query_impl::Queries as TcxQueries;
 use rustc_serialize::json;
 use rustc_session::config::{self, OutputFilenames, OutputType};
@@ -87,6 +87,17 @@ pub struct Queries<'tcx> {
     prepare_outputs: Query<OutputFilenames>,
     global_ctxt: Query<QueryContext<'tcx>>,
     ongoing_codegen: Query<Box<dyn Any>>,
+}
+
+impl<'tcx> rustc_middle::ty::Resolver<'tcx> for Query<(ast::Crate, BoxedResolver, Lrc<LintStore>)> {
+    type Output = Ref<'tcx, ResolverOutputs>;
+    fn resolver_outputs(&'tcx self) -> Self::Output {
+        Ref::map(self.peek(), |(_, resolver, _)| resolver.resolver_outputs())
+        //let query = self.result.borrow_mut().as_ref().expect("should only be called after expansion");
+        // let resolver = &self.result.borrow().as_ref().expect("should only be called after expansion").as_ref().unwrap().1;
+        // resolver.resolver_outputs()
+        //query.1.resolver_outputs()
+    }
 }
 
 impl<'tcx> Queries<'tcx> {
@@ -259,7 +270,7 @@ impl<'tcx> Queries<'tcx> {
             let crate_name = self.crate_name()?.peek().clone();
             let outputs = self.prepare_outputs()?.peek().clone();
             let lint_store = self.expansion()?.peek().2.clone();
-            let resolver = std::cell::Ref::map(&mut *self.expansion()?.peek(), |x| x.1);
+            //let resolver = std::cell::Ref::map(&mut *self.expansion()?.peek(), |x| x.1);
             let hir = self.lower_to_hir()?.peek();
             let dep_graph = self.dep_graph()?.peek().clone();
             let ref krate = &*hir;
@@ -269,7 +280,7 @@ impl<'tcx> Queries<'tcx> {
                 lint_store,
                 krate,
                 dep_graph,
-                resolver,
+                &self.expansion,
                 outputs,
                 &crate_name,
                 &self.queries,
