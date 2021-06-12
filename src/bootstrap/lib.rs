@@ -154,7 +154,6 @@ mod job;
 #[cfg(all(unix, not(target_os = "haiku")))]
 mod job {
     pub unsafe fn setup(build: &mut crate::Build) {
-        libc::atexit(crate::builder::print_replication_steps);
         if build.config.low_priority {
             libc::setpriority(libc::PRIO_PGRP as _, 0, 10);
         }

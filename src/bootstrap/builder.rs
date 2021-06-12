@@ -9,11 +9,9 @@ use std::hash::Hash;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use build_helper::{output, t};
-use lazy_static::lazy_static;
 
 use crate::cache::{Cache, Interned, INTERNER};
 use crate::check;
@@ -621,6 +619,29 @@ impl<'a> Builder<'a> {
 
     fn run_step_descriptions(&self, v: &[StepDescription], paths: &[PathBuf]) {
         StepDescription::run(v, self, paths);
+    }
+
+    /// Print a command that will run the current step.
+    ///
+    /// This serves two purposes:
+    /// 1. Describe what step is currently being run.
+    /// 2. Describe how to run only this step in case it fails.
+    pub(crate) fn step_info(&self, step: &impl Step) {
+        if self.config.dry_run {
+            return;
+        }
+        print!(
+            "{} {} --stage {}",
+            // TODO: this is wrong, e.g. `check --stage 1` runs build commands first
+            self.kind,
+            step.path(self).display(),
+            // FIXME: top_stage might be higher than the stage of the step
+            self.top_stage,
+        );
+        for arg in self.config.cmd.test_args() {
+            print!(" --test-args \"{}\"", arg);
+        }
+        println!();
     }
 
     /// Obtain a compiler at a given stage and for a given host. Explicitly does
@@ -1566,28 +1587,12 @@ impl<'a> Builder<'a> {
         }
 
         let (out, dur) = {
-            let instructions = ReplicationStep {
-                cmd: self.kind,
-                name: step.name(),
-                path: step.path(self),
-                // FIXME: top_stage might be higher than the stage of the step
-                stage: self.top_stage,
-                test_args: self.config.cmd.test_args().into_iter().map(String::from).collect(),
-            };
-            // NOTE: don't hold onto this guard, it will cause a deadlock if the current step calls `ensure` recursively.
-            let old_instructions = CURRENT_INSTRUCTIONS
-                .lock()
-                .expect("steps are not run in parallel")
-                .replace(instructions);
-
             let start = Instant::now();
             let zero = Duration::new(0, 0);
             let parent = self.time_spent_on_dependencies.replace(zero);
             let out = step.clone().run(self);
             let dur = start.elapsed();
             let deps = self.time_spent_on_dependencies.replace(parent + dur);
-
-            *CURRENT_INSTRUCTIONS.lock().expect("steps are not run in parallel") = old_instructions;
 
             (out, dur - deps)
         };
@@ -1604,36 +1609,6 @@ impl<'a> Builder<'a> {
         self.verbose(&format!("{}< {:?}", "  ".repeat(self.stack.borrow().len()), step));
         self.cache.put(step, out.clone());
         out
-    }
-}
-
-struct ReplicationStep {
-    cmd: Kind,
-    name: &'static str,
-    path: PathBuf,
-    stage: u32,
-    test_args: Vec<String>,
-}
-
-lazy_static! {
-    static ref CURRENT_INSTRUCTIONS: Mutex<Option<ReplicationStep>> = Mutex::new(None);
-}
-
-pub(crate) extern "C" fn print_replication_steps() {
-    if let Some(step) = CURRENT_INSTRUCTIONS.lock().expect("mutex guard is dropped on panic").take()
-    {
-        // ignore errors; we're exiting anyway
-        println!("note: failed while building {}", step.name);
-        print!(
-            "help: to replicate this failure, run `./x.py {} {} --stage {}",
-            step.cmd,
-            step.path.display(),
-            step.stage,
-        );
-        for arg in step.test_args {
-            print!(" --test-args \"{}\"", arg);
-        }
-        println!("`");
     }
 }
 

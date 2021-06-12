@@ -47,8 +47,6 @@ use winapi::um::winnt::{
 };
 
 pub unsafe fn setup(build: &mut Build) {
-    libc::atexit(print_replication_steps);
-
     // Enable the Windows Error Reporting dialog which msys disables,
     // so we can JIT debug rustc
     let mode = SetErrorMode(0);
