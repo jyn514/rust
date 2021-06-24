@@ -30,6 +30,40 @@ use crate::{Build, DocTests, GitRepo, Mode};
 
 pub use crate::Compiler;
 
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct TargetAndCompiler {
+    compiler: Compiler,
+    target: TargetSelection,
+}
+
+#[macro_export]
+macro_rules! compiled {(
+    $( #[$attr:meta] )*
+    $pub:vis struct $StructName:ident /* no generics */ {
+        $($contents:tt)*
+    }
+) => (
+    $( #[$attr] )*
+    $pub struct $StructName {
+        target_and_compiler: $crate::builder::TargetAndCompiler,
+        $($contents)*
+    }
+
+    // impl $StructName {
+    //     fn new() -> Self {
+
+    //     }
+    // }
+
+    impl std::ops::Deref for $StructName {
+        type Target = $crate::builder::TargetAndCompiler;
+
+        fn deref(&self) -> &Self::Target {
+            &self.target_and_compiler
+        }
+    }
+)}
+
 pub struct Builder<'a> {
     pub build: &'a Build,
     pub top_stage: u32,

@@ -595,11 +595,14 @@ impl Step for Rustdoc {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-pub struct Cargo {
-    pub compiler: Compiler,
-    pub target: TargetSelection,
+crate::compiled! {
+    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+    pub struct Cargo {}
 }
+// pub struct Cargo {
+//     pub compiler: Compiler,
+//     pub target: TargetSelection,
+// }
 
 impl Step for Cargo {
     type Output = PathBuf;
