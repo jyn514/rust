@@ -521,17 +521,6 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
         Ok((cx, krate))
     }
 
-    fn make_child_renderer(&self) -> Self {
-        Self {
-            current: self.current.clone(),
-            dst: self.dst.clone(),
-            render_redirect_pages: self.render_redirect_pages,
-            id_map: RefCell::new(IdMap::new()),
-            shared: Rc::clone(&self.shared),
-            include_sources: self.include_sources,
-        }
-    }
-
     fn after_krate(&mut self) -> Result<(), Error> {
         let crate_name = self.tcx().crate_name(LOCAL_CRATE);
         let final_file = self.dst.join(&*crate_name.as_str()).join("all.html");

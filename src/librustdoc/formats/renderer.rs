@@ -27,9 +27,6 @@ crate trait FormatRenderer<'tcx>: Sized {
         tcx: TyCtxt<'tcx>,
     ) -> Result<(Self, clean::Crate), Error>;
 
-    /// Make a new renderer to render a child of the item currently being rendered.
-    fn make_child_renderer(&self) -> Self;
-
     /// Renders a single non-module item. This means no recursive sub-item rendering is required.
     fn item(&mut self, item: clean::Item) -> Result<(), Error>;
 
@@ -57,7 +54,7 @@ crate fn run_format<'tcx, T: FormatRenderer<'tcx>>(
     let prof = &tcx.sess.prof;
 
     let emit_crate = options.should_emit_crate();
-    let (mut format_renderer, krate) = prof
+    let (mut cx, krate) = prof
         .extra_verbose_generic_activity("create_renderer", T::descr())
         .run(|| T::init(krate, options, cache, tcx))?;
 
@@ -66,10 +63,10 @@ crate fn run_format<'tcx, T: FormatRenderer<'tcx>>(
     }
 
     // Render the crate documentation
-    let mut work = vec![(format_renderer.make_child_renderer(), krate.module)];
+    let mut work = vec![krate.module];
 
     let unknown = Symbol::intern("<unknown item>");
-    while let Some((mut cx, item)) = work.pop() {
+    while let Some(item) = work.pop() {
         if item.is_mod() && T::RUN_ON_MODULE {
             // modules are special because they add a namespace. We also need to
             // recurse into the items of the module as well.
@@ -81,11 +78,7 @@ crate fn run_format<'tcx, T: FormatRenderer<'tcx>>(
                 clean::StrippedItem(box clean::ModuleItem(m)) | clean::ModuleItem(m) => m,
                 _ => unreachable!(),
             };
-            for it in module.items {
-                debug!("Adding {:?} to worklist", it.name);
-                work.push((cx.make_child_renderer(), it));
-            }
-
+            work.extend(module.items);
             cx.mod_item_out()?;
         // FIXME: checking `item.name.is_some()` is very implicit and leads to lots of special
         // cases. Use an explicit match instead.
@@ -95,5 +88,5 @@ crate fn run_format<'tcx, T: FormatRenderer<'tcx>>(
         }
     }
     prof.extra_verbose_generic_activity("renderer_after_krate", T::descr())
-        .run(|| format_renderer.after_krate())
+        .run(|| cx.after_krate())
 }
