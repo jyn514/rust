@@ -485,14 +485,13 @@ fn document(w: &mut Buffer, cx: &Context<'_>, item: &clean::Item, parent: Option
 
 /// Render md_text as markdown.
 fn render_markdown(w: &mut Buffer, cx: &Context<'_>, md_text: &str, links: Vec<RenderedLink>) {
-    let mut ids = cx.id_map.borrow_mut();
     write!(
         w,
         "<div class=\"docblock\">{}</div>",
         Markdown(
             md_text,
             &links,
-            &mut ids,
+            &mut cx.id_map(),
             cx.shared.codes,
             cx.shared.edition(),
             &cx.shared.playground
@@ -622,7 +621,7 @@ fn short_item_info(
 
         if let Some(note) = note {
             let note = note.as_str();
-            let mut ids = cx.id_map.borrow_mut();
+            let mut ids = cx.id_map();
             let html = MarkdownHtml(
                 &note,
                 &mut ids,
@@ -661,13 +660,12 @@ fn short_item_info(
         message.push_str(&format!(" ({})", feature));
 
         if let Some(unstable_reason) = reason {
-            let mut ids = cx.id_map.borrow_mut();
             message = format!(
                 "<details><summary>{}</summary>{}</details>",
                 message,
                 MarkdownHtml(
                     &unstable_reason.as_str(),
-                    &mut ids,
+                    &mut cx.id_map(),
                     error_codes,
                     cx.shared.edition(),
                     &cx.shared.playground,
@@ -1537,14 +1535,13 @@ fn render_impl(
         }
 
         if let Some(ref dox) = cx.shared.maybe_collapsed_doc_value(&i.impl_item) {
-            let mut ids = cx.id_map.borrow_mut();
             write!(
                 w,
                 "<div class=\"docblock\">{}</div>",
                 Markdown(
                     &*dox,
                     &i.impl_item.links(cx),
-                    &mut ids,
+                    &mut cx.id_map(),
                     cx.shared.codes,
                     cx.shared.edition(),
                     &cx.shared.playground

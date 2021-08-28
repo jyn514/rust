@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::io;
@@ -55,7 +55,10 @@ crate struct Context<'tcx> {
     /// publicly reused items to redirect to the right location.
     pub(super) render_redirect_pages: bool,
     /// The map used to ensure all generated 'id=' attributes are unique.
-    pub(super) id_map: RefCell<IdMap>,
+    ///
+    /// INVARIANT: there is always at least one map in this list (because `mod_item_out` is never
+    /// called without first calling `mod_item_in`).
+    pub(super) id_maps: Vec<RefCell<IdMap>>,
     /// Shared mutable state.
     ///
     /// Issue for improving the situation: [#82381][]
@@ -70,7 +73,7 @@ crate struct Context<'tcx> {
 
 // `Context` is cloned a lot, so we don't want the size to grow unexpectedly.
 #[cfg(target_arch = "x86_64")]
-rustc_data_structures::static_assert_size!(Context<'_>, 104);
+rustc_data_structures::static_assert_size!(Context<'_>, 88);
 
 /// Shared mutable state used in [`Context`] and elsewhere.
 crate struct SharedContext<'tcx> {
@@ -161,9 +164,12 @@ impl<'tcx> Context<'tcx> {
         &self.shared.tcx.sess
     }
 
+    pub(super) fn id_map(&self) -> RefMut<'_, IdMap> {
+        self.id_maps.last().unwrap().borrow_mut()
+    }
+
     pub(super) fn derive_id(&self, id: String) -> String {
-        let mut map = self.id_map.borrow_mut();
-        map.derive(id)
+        self.id_map().derive(id)
     }
 
     /// String representation of how to get back to the root path of the 'doc/'
@@ -502,7 +508,7 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
             current: Vec::new(),
             dst,
             render_redirect_pages: false,
-            id_map: RefCell::new(id_map),
+            id_maps: vec![RefCell::new(id_map)],
             shared: Rc::new(scx),
             include_sources,
         };
@@ -608,6 +614,7 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
     }
 
     fn mod_item_in(&mut self, item: &clean::Item) -> Result<(), Error> {
+        self.id_maps.push(RefCell::new(IdMap::new()));
         // Stripped modules survive the rustdoc passes (i.e., `strip-private`)
         // if they contain impls for public types. These modules can also
         // contain items such as publicly re-exported structures.
@@ -653,6 +660,7 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
         // Go back to where we were at
         self.dst.pop();
         self.current.pop();
+        self.id_maps.pop();
         Ok(())
     }
 
