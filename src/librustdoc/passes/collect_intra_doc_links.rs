@@ -277,12 +277,12 @@ struct LinkCollector<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
-    /// Given a full link, parse it as an [enum struct variant].
+    /// Given a full link, parse it as a struct field or [enum variant field].
     ///
-    /// In particular, this will return an error whenever there aren't three
+    /// In particular, this will always return an error whenever there aren't at least two
     /// full path segments left in the link.
     ///
-    /// [enum struct variant]: hir::VariantData::Struct
+    /// [enum variant field]: hir::VariantData::Struct
     fn variant_field(
         &self,
         path_str: &'path str,
@@ -295,23 +295,21 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             unresolved: path_str.into(),
         };
 
-        debug!("looking for enum variant {}", path_str);
-        let mut split = path_str.rsplitn(3, "::");
-        let (variant_field_str, variant_field_name) = split
+        debug!("looking for struct or enum variant field {}", path_str);
+        let mut split = path_str.splitn(3, "::");
+        let path = split
             .next()
-            .map(|f| (f, Symbol::intern(f)))
+            .map(|f| f.to_owned())
             .expect("fold_item should ensure link is non-empty");
+        // FIXME: `variant_name` is a bad name, it should be `variant_or_struct_field_name` or something
         let (variant_str, variant_name) =
             // we're not sure this is a variant at all, so use the full string
             // If there's no second component, the link looks like `[path]`.
             // So there's no partial res and we should say the whole link failed to resolve.
             split.next().map(|f| (f, Symbol::intern(f))).ok_or_else(no_res)?;
-        let path = split
+        let variant_field = split
             .next()
-            .map(|f| f.to_owned())
-            // If there's no third component, we saw `[a::b]` before and it failed to resolve.
-            // So there's no partial res.
-            .ok_or_else(no_res)?;
+            .map(|f| (f, Symbol::intern(f)));
         let ty_res = self
             .cx
             .enter_resolver(|resolver| {
@@ -320,8 +318,26 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
             .and_then(|(_, res)| res.try_into())
             .map_err(|()| no_res())?;
 
-        match ty_res {
-            Res::Def(DefKind::Enum, did) => {
+        match (ty_res, variant_field) {
+            (Res::Def(DefKind::Struct | DefKind::Union, did), None) => {
+                // NOTE: different from the enum case because it only resolves struct fields,
+                // not variant fields (2 path segments, not 3).
+                let def = match tcx.type_of(did).kind() {
+                    ty::Adt(def, _) => def,
+                    ty => bug!("mismatched DefKind (expected {:?} to be a struct or union)", ty),
+                };
+                assert!(!def.is_enum(), "expected {:?} to be a struct or union", def);
+                let field = def.non_enum_variant().fields.iter().find(|item| item.ident.name == variant_name).ok_or_else(no_res)?;
+                Ok((
+                    ty_res,
+                    Some(format!(
+                        "structfield.{}",
+                        field.ident
+                    )),
+                    // Some((DefKind::Field, field.did)),
+                ))
+            }
+            (Res::Def(DefKind::Enum, did), Some((variant_field_str, variant_field_name))) => {
                 if tcx
                     .inherent_impls(did)
                     .iter()
@@ -633,33 +649,14 @@ impl<'a, 'tcx> LinkCollector<'a, 'tcx> {
                     // HACK(jynelson): `clean` expects the type, not the associated item
                     // but the disambiguator logic expects the associated item.
                     // Store the kind in a side channel so that only the disambiguator logic looks at it.
-                    return Some((
+                    Some((
                         root_res,
                         format!("{}.{}", out, item_name),
                         Some((kind.as_def_kind(), id)),
-                    ));
+                    ))
+                } else {
+                    None
                 }
-
-                if ns != Namespace::ValueNS {
-                    return None;
-                }
-                debug!("looking for fields named {} for {:?}", item_name, did);
-                // FIXME: this doesn't really belong in `associated_item` (maybe `variant_field` is better?)
-                // NOTE: it's different from variant_field because it only resolves struct fields,
-                // not variant fields (2 path segments, not 3).
-                let def = match tcx.type_of(did).kind() {
-                    ty::Adt(def, _) if !def.is_enum() => def,
-                    _ => return None,
-                };
-                let field = def.non_enum_variant().fields.iter().find(|item| item.ident.name == item_name)?;
-                Some((
-                    root_res,
-                    format!(
-                        "structfield.{}",
-                        field.ident
-                    ),
-                    Some((DefKind::Field, field.did)),
-                ))
             }
             Res::Def(DefKind::Trait, did) => tcx
                 .associated_items(did)
