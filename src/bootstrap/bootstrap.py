@@ -570,6 +570,7 @@ class RustBuild(object):
                 ("rust-std-{}".format(toolchain_suffix), "rust-std-{}".format(self.build)),
                 ("rustc-{}".format(toolchain_suffix), "rustc"),
                 ("cargo-{}".format(toolchain_suffix), "cargo"),
+                ("clippy-{}".format(toolchain_suffix), "clippy-preview"),
             ]
 
             tarballs_download_info = [
@@ -615,22 +616,6 @@ class RustBuild(object):
 
             with output(self.rustc_stamp()) as rust_stamp:
                 rust_stamp.write(key)
-
-    def _download_component_helper(
-        self, filename, pattern, tarball_suffix, rustc_cache,
-    ):
-        key = self.stage0_compiler.date
-
-        tarball = os.path.join(rustc_cache, filename)
-        if not os.path.exists(tarball):
-            get(
-                self.download_url,
-                "dist/{}/{}".format(key, filename),
-                tarball,
-                self.checksums_sha256,
-                verbose=self.verbose,
-            )
-        unpack(tarball, tarball_suffix, self.bin_root(), match=pattern, verbose=self.verbose)
 
     def should_fix_bins_and_dylibs(self):
         """Whether or not `fix_bin_or_dylib` needs to be run; can only be True

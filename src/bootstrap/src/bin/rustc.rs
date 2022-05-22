@@ -49,7 +49,8 @@ fn main() {
     // determine the version of the compiler, the real compiler needs to be
     // used. Currently, these two states are differentiated based on whether
     // --target and -vV is/isn't passed.
-    let (rustc, libdir) = if target.is_none() && version.is_none() {
+    let is_build_script = target.is_none() && version.is_none();
+    let (rustc, libdir) = if is_build_script {
         ("RUSTC_SNAPSHOT", "RUSTC_SNAPSHOT_LIBDIR")
     } else {
         ("RUSTC_REAL", "RUSTC_LIBDIR")
@@ -72,7 +73,15 @@ fn main() {
         .unwrap_or_else(|| env::var("CFG_COMPILER_HOST_TRIPLE").unwrap());
     let is_clippy = args[0].to_string_lossy().ends_with(&exe("clippy-driver", &target_name));
     let rustc_driver = if is_clippy {
-        args.remove(0)
+        if is_build_script {
+            // Don't run clippy on build scripts (for one thing, we may not have libstd built with
+            // the appropriate version yet, e.g. for stage 1 std).
+            // Also remove the `clippy-driver` param in addition to the RUSTC param.
+            args.drain(..2);
+            rustc_real
+        } else {
+            args.remove(0)
+        }
     } else {
         args.remove(0);
         rustc_real
