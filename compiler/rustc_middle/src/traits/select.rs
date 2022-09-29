@@ -200,6 +200,11 @@ pub enum EvaluationResult {
     ///
     /// This can't be trivially cached for the same reason as `EvaluatedToRecur`.
     EvaluatedToUnknown,
+    /// We hit an overflow error tying to prove this obligation.
+    ///
+    /// We can't cache this error because we might be able to prove it later when we have fewer
+    /// nested obligations.
+    EvaluatedToOverflow,
     /// Evaluation failed because we encountered an obligation we are already
     /// trying to prove on this branch.
     ///
@@ -267,7 +272,8 @@ impl EvaluationResult {
             | EvaluatedToOk
             | EvaluatedToOkModuloRegions
             | EvaluatedToAmbig
-            | EvaluatedToUnknown => true,
+            | EvaluatedToUnknown 
+            | EvaluatedToOverflow => true,
 
             EvaluatedToErr | EvaluatedToRecur => false,
         }
@@ -275,7 +281,7 @@ impl EvaluationResult {
 
     pub fn is_stack_dependent(self) -> bool {
         match self {
-            EvaluatedToUnknown | EvaluatedToRecur => true,
+            EvaluatedToUnknown | EvaluatedToRecur | EvaluatedToOverflow => true,
 
             EvaluatedToOkModuloOpaqueTypes
             | EvaluatedToOk

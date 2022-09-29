@@ -1,8 +1,10 @@
-error[E0275]: overflow evaluating the requirement `_: Sized`
-  --> $DIR/issue-18400.rs:24:7
+error[E0275]: overflow evaluating the requirement `_: Copy`
+  --> $DIR/issue-18400.rs:24:16
    |
 LL |     0.contains(bits);
-   |       ^^^^^^^^
+   |       -------- ^^^^
+   |       |
+   |       required by a bound introduced by this call
    |
    = help: consider increasing the recursion limit by adding a `#![recursion_limit = "256"]` attribute to your crate (`issue_18400`)
 note: required for `{integer}` to implement `Set<&[_]>`

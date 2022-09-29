@@ -274,6 +274,7 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
         error: &SelectionError<'tcx>,
         fallback_has_occurred: bool,
     ) {
+        let saw_previous_error = self.is_tainted_by_errors();
         self.set_tainted_by_errors();
         let tcx = self.tcx;
         let mut span = obligation.cause.span;
@@ -1076,7 +1077,11 @@ impl<'a, 'tcx> InferCtxtExt<'tcx> for InferCtxt<'a, 'tcx> {
                 return;
             }
             Overflow(_) => {
-                bug!("overflow should be handled before the `report_selection_error` path");
+                if saw_previous_error {
+                    // We already emitted an error; no need to emit another.
+                    return;
+                }
+                self.report_overflow_error(&obligation, true);
             }
             SelectionError::ErrorReporting => {
                 bug!("ErrorReporting Overflow should not reach `report_selection_err` call")
@@ -2110,9 +2115,8 @@ impl<'a, 'tcx> InferCtxtPrivExt<'a, 'tcx> for InferCtxt<'a, 'tcx> {
                     obligation.param_env,
                     trait_ref.to_poly_trait_predicate(),
                 );
-                let mut selcx = SelectionContext::with_query_mode(
+                let mut selcx = SelectionContext::new(
                     &self,
-                    crate::traits::TraitQueryMode::Standard,
                 );
                 match selcx.select_from_obligation(&obligation) {
                     Err(SelectionError::Ambiguous(impls)) if impls.len() > 1 => {

@@ -16,7 +16,7 @@ use super::wf;
 use super::{
     ErrorReporting, ImplDerivedObligation, ImplDerivedObligationCause, Normalized, Obligation,
     ObligationCause, ObligationCauseCode, Overflow, PredicateObligation, Selection, SelectionError,
-    SelectionResult, TraitObligation, TraitQueryMode,
+    SelectionResult, TraitObligation,
 };
 
 use crate::infer::{InferCtxt, InferOk, TypeFreshener};
@@ -26,7 +26,7 @@ use crate::traits::project::ProjectionCacheKeyExt;
 use crate::traits::ProjectionCacheKey;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet, FxIndexSet};
 use rustc_data_structures::stack::ensure_sufficient_stack;
-use rustc_errors::{Diagnostic, ErrorGuaranteed};
+use rustc_errors::Diagnostic; 
 use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::LateBoundRegionConversionTime;
@@ -130,10 +130,10 @@ pub struct SelectionContext<'cx, 'tcx> {
     /// computing it may negatively impact performance.
     intercrate_ambiguity_causes: Option<FxIndexSet<IntercrateAmbiguityCause>>,
 
-    /// The mode that trait queries run in, which informs our error handling
-    /// policy. In essence, canonicalized queries need their errors propagated
-    /// rather than immediately reported because we do not have accurate spans.
-    query_mode: TraitQueryMode,
+    // /// The mode that trait queries run in, which informs our error handling
+    // /// policy. In essence, canonicalized queries need their errors propagated
+    // /// rather than immediately reported because we do not have accurate spans.
+    // query_mode: TraitQueryMode,
 }
 
 // A stack that walks back up the stack frame.
@@ -221,7 +221,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             freshener: infcx.freshener_keep_static(),
             intercrate: false,
             intercrate_ambiguity_causes: None,
-            query_mode: TraitQueryMode::Standard,
+            // query_mode: TraitQueryMode::Standard,
         }
     }
 
@@ -229,13 +229,13 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         SelectionContext { intercrate: true, ..SelectionContext::new(infcx) }
     }
 
-    pub fn with_query_mode(
-        infcx: &'cx InferCtxt<'cx, 'tcx>,
-        query_mode: TraitQueryMode,
-    ) -> SelectionContext<'cx, 'tcx> {
-        debug!(?query_mode, "with_query_mode");
-        SelectionContext { query_mode, ..SelectionContext::new(infcx) }
-    }
+    // pub fn with_query_mode(
+    //     infcx: &'cx InferCtxt<'cx, 'tcx>,
+    //     query_mode: TraitQueryMode,
+    // ) -> SelectionContext<'cx, 'tcx> {
+    //     debug!(?query_mode, "with_query_mode");
+    //     SelectionContext { query_mode, ..SelectionContext::new(infcx) }
+    // }
 
     /// Enables tracking of intercrate ambiguity causes. See
     /// the documentation of [`Self::intercrate_ambiguity_causes`] for more.
@@ -292,7 +292,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             Err(SelectionError::Overflow(OverflowError::Canonical)) => {
                 // In standard mode, overflow must have been caught and reported
                 // earlier.
-                assert!(self.query_mode == TraitQueryMode::Canonical);
+                // assert!(self.query_mode == TraitQueryMode::Canonical);
                 return Err(SelectionError::Overflow(OverflowError::Canonical));
             }
             Err(SelectionError::Ambiguous(_)) => {
@@ -309,7 +309,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
         match self.confirm_candidate(obligation, candidate) {
             Err(SelectionError::Overflow(OverflowError::Canonical)) => {
-                assert!(self.query_mode == TraitQueryMode::Canonical);
+                // assert!(self.query_mode == TraitQueryMode::Canonical);
                 Err(SelectionError::Overflow(OverflowError::Canonical))
             }
             Err(e) => Err(e),
@@ -345,10 +345,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
 
         // This fatal query is a stopgap that should only be used in standard mode,
         // where we do not expect overflow to be propagated.
-        assert!(self.query_mode == TraitQueryMode::Standard);
+        // assert!(self.query_mode == TraitQueryMode::Standard);
 
         self.evaluate_root_obligation(obligation)
-            .expect("Overflow should be caught earlier in standard query mode")
+            .unwrap_or_else(|_| self.infcx.report_overflow_error(obligation, true))
             .may_apply()
     }
 
@@ -1125,19 +1125,20 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         error_obligation: &Obligation<'tcx, T>,
     ) -> Result<(), OverflowError> {
         if !self.infcx.tcx.recursion_limit().value_within_limit(depth) {
-            match self.query_mode {
-                TraitQueryMode::Standard => {
-                    if self.infcx.is_tainted_by_errors() {
-                        return Err(OverflowError::Error(
-                            ErrorGuaranteed::unchecked_claim_error_was_emitted(),
-                        ));
-                    }
-                    self.infcx.report_overflow_error(error_obligation, true);
-                }
-                TraitQueryMode::Canonical => {
-                    return Err(OverflowError::Canonical);
-                }
-            }
+            return Err(OverflowError::Canonical);
+            // match self.query_mode {
+            //     TraitQueryMode::Standard => {
+            //         if self.infcx.is_tainted_by_errors() {
+            //             return Err(OverflowError::Error(
+            //                 ErrorGuaranteed::unchecked_claim_error_was_emitted(),
+            //             ));
+            //         }
+            //         self.infcx.report_overflow_error(error_obligation, true);
+            //     }
+            //     TraitQueryMode::Canonical => {
+            //         return Err(OverflowError::Canonical);
+            //     }
+            // }
         }
         Ok(())
     }
