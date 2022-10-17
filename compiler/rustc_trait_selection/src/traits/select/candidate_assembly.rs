@@ -35,7 +35,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     ) -> SelectionResult<'tcx, SelectionCandidate<'tcx>> {
         // Watch out for overflow. This intentionally bypasses (and does
         // not update) the cache.
-        self.check_recursion_limit(&stack.obligation, &stack.obligation)?;
+        self.check_recursion_limit(&stack.obligation)?;
 
         // Check the cache. Note that we freshen the trait-ref
         // separately rather than using `stack.fresh_trait_ref` --

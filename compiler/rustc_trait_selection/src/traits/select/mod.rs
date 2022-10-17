@@ -44,7 +44,7 @@ use rustc_span::symbol::sym;
 
 use std::cell::{Cell, RefCell};
 use std::cmp;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::iter;
 
 pub use rustc_middle::traits::select::*;
@@ -109,7 +109,7 @@ pub struct SelectionContext<'cx, 'tcx> {
     /// To deal with this evaluation should be conservative
     /// and consider the possibility of impls from outside this crate.
     /// This comes up primarily when resolving ambiguity. Imagine
-    /// there is some trait reference `$0: Bar` where `$0` is an
+    /// there is some trait reference `: Bar` where `$0` is an
     /// inference variable. If `intercrate` is true, then we can never
     /// say for sure that this reference is not implemented, even if
     /// there are *no impls at all for `Bar`*, because `$0` could be
@@ -431,10 +431,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         // a `PredicateObligation`. These are distinct types, so we can't
         // use any `Option` combinator method that would force them to be
         // the same.
-        match previous_stack.head() {
-            Some(h) => self.check_recursion_limit(&obligation, h.obligation)?,
-            None => self.check_recursion_limit(&obligation, &obligation)?,
-        }
+        self.check_recursion_limit(&obligation)?;
 
         ensure_sufficient_stack(|| {
             let bound_predicate = obligation.predicate.kind();
@@ -1119,28 +1116,15 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         it.for_each(|o| o.recursion_depth = cmp::max(min_depth, o.recursion_depth) + 1);
     }
 
-    fn check_recursion_depth<T: Display + TypeFoldable<'tcx>>(
+    fn check_recursion_depth(
         &self,
         depth: usize,
-        error_obligation: &Obligation<'tcx, T>,
     ) -> Result<(), OverflowError> {
-        if !self.infcx.tcx.recursion_limit().value_within_limit(depth) {
-            return Err(OverflowError::Canonical);
-            // match self.query_mode {
-            //     TraitQueryMode::Standard => {
-            //         if self.infcx.is_tainted_by_errors() {
-            //             return Err(OverflowError::Error(
-            //                 ErrorGuaranteed::unchecked_claim_error_was_emitted(),
-            //             ));
-            //         }
-            //         self.infcx.report_overflow_error(error_obligation, true);
-            //     }
-            //     TraitQueryMode::Canonical => {
-            //         return Err(OverflowError::Canonical);
-            //     }
-            // }
+        if self.infcx.tcx.recursion_limit().value_within_limit(depth) {
+            Ok(())
+        } else {
+            Err(OverflowError::Canonical)
         }
-        Ok(())
     }
 
     /// Checks that the recursion limit has not been exceeded.
@@ -1148,12 +1132,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     /// The weird return type of this function allows it to be used with the `try` (`?`)
     /// operator within certain functions.
     #[inline(always)]
-    fn check_recursion_limit<T: Display + TypeFoldable<'tcx>, V: Display + TypeFoldable<'tcx>>(
+    fn check_recursion_limit<T>(
         &self,
         obligation: &Obligation<'tcx, T>,
-        error_obligation: &Obligation<'tcx, V>,
     ) -> Result<(), OverflowError> {
-        self.check_recursion_depth(obligation.recursion_depth, error_obligation)
+        self.check_recursion_depth(obligation.recursion_depth)
     }
 
     fn in_task<OP, R>(&mut self, op: OP) -> (R, DepNodeIndex)
