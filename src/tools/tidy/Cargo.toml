@@ -7,6 +7,11 @@ autobins = false
 [dependencies]
 cargo_metadata = "0.14"
 regex = "1"
+serde_json = "1"
+# NOTE: intentionally doesn't use the in-tree rustdoc-json-types so that we're resiliant to breaking
+# changes between beta and nightly (since tidy always uses stage 0 rustdoc).
+rustdoc-types = "0.18"
+syn = { version = "1", features = ["full"] }
 lazy_static = "1"
 walkdir = "2"
 

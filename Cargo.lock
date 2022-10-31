@@ -4341,6 +4341,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustdoc-types"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7745b68b43d89a088d2d270be09f54f948e587fc540cb15e3d3b75cb327a01c3"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "rustfix"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4921,6 +4930,9 @@ dependencies = [
  "cargo_metadata 0.14.0",
  "lazy_static",
  "regex",
+ "rustdoc-types",
+ "serde_json",
+ "syn",
  "walkdir",
 ]
 

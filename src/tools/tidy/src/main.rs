@@ -23,6 +23,8 @@ fn main() {
     let concurrency: NonZeroUsize =
         FromStr::from_str(&env::args().nth(4).expect("need concurrency"))
             .expect("concurrency must be a number");
+    let json_docs: PathBuf =
+        env::args_os().nth(5).expect("need path to json docs").into();
 
     let src_path = root_path.join("src");
     let library_path = root_path.join("library");
@@ -105,7 +107,7 @@ fn main() {
             }
             r
         };
-        check!(unstable_book, &src_path, collected);
+        check!(unstable_book, &src_path, json_docs, collected);
     });
 
     if bad.load(Ordering::Relaxed) {

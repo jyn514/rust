@@ -1,6 +1,10 @@
+use rustdoc_types::{Crate, Id};
+use syn::{Ident, Meta, NestedMeta, Lit};
+
 use crate::features::{CollectedFeatures, Features, Status};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
+use std::io::{BufReader, BufRead};
 use std::path::{Path, PathBuf};
 
 pub const PATH_STR: &str = "doc/unstable-book";
@@ -10,6 +14,79 @@ pub const COMPILER_FLAGS_DIR: &str = "src/compiler-flags";
 pub const LANG_FEATURES_DIR: &str = "src/language-features";
 
 pub const LIB_FEATURES_DIR: &str = "src/library-features";
+
+fn full_path(krate: &Crate, item: &Id) -> String {
+    todo!()
+}
+
+fn is_ident(ident: &Ident, name: &str) -> bool {
+    *ident == Ident::new(name, ident.span())
+}
+
+/// Returns an item name -> item unstable attributes mapping.
+fn load_rustdoc_json_metadata(doc_dir: &Path) -> HashMap<String, String> {
+    let mut all_items = HashMap::new();
+
+    for file in fs::read_dir(doc_dir).expect("failed to list files in directory") {
+        let entry = file.expect("failed to list file in directory");
+        let file = fs::File::open(entry.path()).expect("failed to open file");
+        let krate: Crate = serde_json::from_reader(BufReader::new(file)).expect("failed to parse JSON docs");
+
+        let mut crate_items = HashMap::new();
+        for item in krate.index.values() {
+            if item.name.is_none() {
+                continue;
+            }
+            let unstable_feature = item.attrs.iter().find_map(|attr: &String| {
+                let parsed: syn::Attribute = syn::parse_str(attr).expect("failed to parse attribute");
+
+                // Make sure this is an `unstable` attribute.
+                if !is_ident(parsed.path.get_ident()?, "unstable") {
+                    return None;
+                }
+
+                // Given `#[unstable(feature = "xyz")]`, return `(feature = "xyz")`.
+                let list = match parsed.parse_meta() {
+                    Ok(Meta::List(list)) => list,
+                    _ => return None,
+                };
+
+                // Given a `NestedMeta` like `feature = "xyz"`, returns `xyz`.
+                let get_feature_name = |nested: &_| {
+                    match nested {
+                        NestedMeta::Meta(Meta::NameValue(name_value)) => {
+                            if !is_ident(name_value.path.get_ident()?, "feature") {
+                                return None;
+                            }
+                            match name_value.lit {
+                                Lit::Str(s) => Some(s.value()),
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    }
+                };
+
+                for nested in list.nested.iter() {
+                    if let Some(feat) = get_feature_name(nested) {
+                        return Some(feat);
+                    }
+                }
+
+                None
+            });
+            if let Some(feat) = unstable_feature {
+                crate_items[&item.id] = feat;
+            }
+        }
+
+        for (item, feat) in crate_items {
+            all_items.insert(full_path(&krate, item), feat.to_owned());
+        }
+    }
+
+    all_items
+}
 
 /// Builds the path to the Unstable Book source directory from the Rust 'src' directory.
 pub fn unstable_book_path(base_src_path: &Path) -> PathBuf {
@@ -71,7 +148,7 @@ fn collect_unstable_book_lib_features_section_file_names(base_src_path: &Path) -
     collect_unstable_book_section_file_names(&unstable_book_lib_features_path(base_src_path))
 }
 
-pub fn check(path: &Path, features: CollectedFeatures, bad: &mut bool) {
+pub fn check(path: &Path, json_docs: &Path, features: CollectedFeatures, bad: &mut bool) {
     let lang_features = features.lang;
     let lib_features = features
         .lib
@@ -99,6 +176,12 @@ pub fn check(path: &Path, features: CollectedFeatures, bad: &mut bool) {
                          correspond to an unstable library feature",
                 feature_name
             );
+        }
+        let feature_path = unstable_book_lib_features_path(path).join(feature_name).with_extension("md");
+        if !BufReader::new(fs::File::open(&feature_path).expect("could not read lib feature file")).lines().any(|line| {
+            line.expect("could not ready lib feature file").contains("https://doc.rust-lang.org")
+        }) {
+            tidy_error!(bad, "the library feature {} has link to the rustdoc-generated docs; add a link to doc.rust-lang.org to {}", feature_name, feature_path.display());
         }
     }
 

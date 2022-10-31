@@ -1040,11 +1040,15 @@ impl Step for Tidy {
     /// Once tidy passes, this step also runs `fmt --check` if tests are being run
     /// for the `dev` or `nightly` channels.
     fn run(self, builder: &Builder<'_>) {
+        let host = builder.build.build;
         let mut cmd = builder.tool_cmd(Tool::Tidy);
+        builder.ensure(crate::doc::JsonStd { stage: 0, target: host });
+
         cmd.arg(&builder.src);
         cmd.arg(&builder.initial_cargo);
         cmd.arg(&builder.out);
         cmd.arg(builder.jobs().to_string());
+        cmd.arg(builder.json_doc_out(host));
         if builder.is_verbose() {
             cmd.arg("--verbose");
         }
