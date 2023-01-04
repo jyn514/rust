@@ -423,9 +423,17 @@ fn check_license_exceptions(
                 }
                 Some(pkg_license) => {
                     if pkg_license.as_str() != *license {
-                        tidy_error!(bad, concat!("dependency exception `{}` license has changed\n",
-                        "    previously `{}` now `{}`\n",
-                        "    update EXCEPTIONS for the new license\n"), name, license, pkg_license);
+                        tidy_error!(
+                            bad,
+                            concat!(
+                                "dependency exception `{}` license has changed\n",
+                                "    previously `{}` now `{}`\n",
+                                "    update EXCEPTIONS for the new license\n"
+                            ),
+                            name,
+                            license,
+                            pkg_license
+                        );
                     }
                 }
             }

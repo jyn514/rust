@@ -303,7 +303,7 @@ pub fn check(path: &Path, bad: &AtomicBool) {
                 lines += 1;
             }
 
-            let mut err = |msg: &str| {
+            let err = |msg: &str| {
                 tidy_error!(bad, "{}:{}: {}", file.display(), i + 1, msg);
             };
             if !under_rustfmt
@@ -376,12 +376,12 @@ pub fn check(path: &Path, bad: &AtomicBool) {
             }
         }
         if leading_new_lines {
-            let mut err = |_| {
+            let err = |_| {
                 tidy_error!(bad, "{}: leading newline", file.display());
             };
             suppressible_tidy_err!(err, skip_leading_newlines, "mising leading newline");
         }
-        let mut err = |msg: &str| {
+        let err = |msg: &str| {
             tidy_error!(bad, "{}: {}", file.display(), msg);
         };
         match trailing_new_lines {
@@ -394,7 +394,7 @@ pub fn check(path: &Path, bad: &AtomicBool) {
             ),
         };
         if lines > LINES {
-            let mut err = |_| {
+            let err = |_| {
                 tidy_error!(
                     bad,
                     "{}: too many lines ({}) (add `// \

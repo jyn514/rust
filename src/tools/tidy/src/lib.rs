@@ -3,7 +3,10 @@
 //! This library contains the tidy lints and exposes it
 //! to be used by tools.
 
-use std::{fmt::Display, sync::atomic::{AtomicBool, Ordering}};
+use std::{
+    fmt::Display,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use termcolor::WriteColor;
 

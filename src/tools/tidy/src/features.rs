@@ -16,6 +16,7 @@ use std::fs;
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 
 use regex::Regex;
 
@@ -71,14 +72,14 @@ pub struct CollectedFeatures {
 
 // Currently only used for unstable book generation
 pub fn collect_lib_features(base_src_path: &Path) -> Features {
-    let mut lib_features = Features::new();
+    let lib_features = RwLock::new(Features::new());
 
     map_lib_features(base_src_path, &mut |res, _, _| {
         if let Ok((name, feature)) = res {
-            lib_features.insert(name.to_owned(), feature);
+            lib_features.write().unwrap().insert(name.to_owned(), feature);
         }
     });
-    lib_features
+    lib_features.into_inner().unwrap()
 }
 
 pub fn check(
@@ -88,12 +89,13 @@ pub fn check(
     bad: &AtomicBool,
     verbose: bool,
 ) -> CollectedFeatures {
-    let mut features = collect_lang_features(compiler_path, bad);
+    let features = collect_lang_features(compiler_path, bad);
     assert!(!features.is_empty());
 
     let lib_features = get_and_check_lib_features(lib_path, bad, &features);
     assert!(!lib_features.is_empty());
 
+    let features = RwLock::new(features);
     walk_many(
         &[
             &src_path.join("test/ui"),
@@ -112,11 +114,13 @@ pub fn check(
                 return;
             }
 
+            let mut features = features.write().unwrap();
+
             let filen_underscore = filename.replace('-', "_").replace(".rs", "");
             let filename_is_gate_test = test_filen_gate(&filen_underscore, &mut features);
 
             for (i, line) in contents.lines().enumerate() {
-                let mut err = |msg: &str| {
+                let err = |msg: &str| {
                     tidy_error!(bad, "{}:{}: {}", file.display(), i + 1, msg);
                 };
 
@@ -149,6 +153,8 @@ pub fn check(
             }
         },
     );
+
+    let features = features.into_inner().unwrap();
 
     // Only check the number of lang features.
     // Obligatory testing for library features is dumb.
@@ -446,10 +452,10 @@ fn get_and_check_lib_features(
     bad: &AtomicBool,
     lang_features: &Features,
 ) -> Features {
-    let mut lib_features = Features::new();
+    let lib_features = RwLock::new(Features::new());
     map_lib_features(base_src_path, &mut |res, file, line| match res {
         Ok((name, f)) => {
-            let mut check_features = |f: &Feature, list: &Features, display: &str| {
+            let check_features = |f: &Feature, list: &Features, display: &str| {
                 if let Some(ref s) = list.get(name) {
                     if f.tracking_issue != s.tracking_issue && f.level != Status::Stable {
                         tidy_error!(
@@ -465,6 +471,8 @@ fn get_and_check_lib_features(
                 }
             };
             check_features(&f, &lang_features, "corresponding lang feature");
+
+            let mut lib_features = lib_features.write().unwrap();
             check_features(&f, &lib_features, "previous");
             lib_features.insert(name.to_owned(), f);
         }
@@ -472,12 +480,12 @@ fn get_and_check_lib_features(
             tidy_error!(bad, "{}:{}: {}", file.display(), line, msg);
         }
     });
-    lib_features
+    lib_features.into_inner().unwrap()
 }
 
 fn map_lib_features(
     base_src_path: &Path,
-    mf: &mut (dyn Send + Sync + FnMut(Result<(&str, Feature), &str>, &Path, usize)),
+    mf: &(dyn Send + Sync + Fn(Result<(&str, Feature), &str>, &Path, usize)),
 ) {
     walk(
         base_src_path,

@@ -6,7 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::read_to_string;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::RwLock;
 
 use regex::Regex;
 
@@ -166,7 +167,9 @@ fn extract_error_codes(
     }
 }
 
-fn extract_error_codes_from_tests(f: &str, error_codes: &mut HashMap<String, ErrorCodeStatus>) {
+fn extract_error_codes_from_tests(f: &str, error_codes: &RwLock<HashMap<String, ErrorCodeStatus>>) {
+    let mut error_codes = error_codes.write().unwrap();
+
     for line in f.lines() {
         let s = line.trim();
         if s.starts_with("error[E") || s.starts_with("warning[E") {
@@ -184,9 +187,10 @@ fn extract_error_codes_from_tests(f: &str, error_codes: &mut HashMap<String, Err
 
 fn extract_error_codes_from_source(
     f: &str,
-    error_codes: &mut HashMap<String, ErrorCodeStatus>,
+    error_codes: &RwLock<HashMap<String, ErrorCodeStatus>>,
     regex: &Regex,
 ) {
+    let mut error_codes = error_codes.write().unwrap();
     for line in f.lines() {
         if line.trim_start().starts_with("//") {
             continue;
@@ -200,11 +204,11 @@ fn extract_error_codes_from_source(
 }
 
 pub fn check(paths: &[&Path], bad: &AtomicBool) {
-    let mut errors = Vec::new();
-    let mut found_explanations = 0;
-    let mut found_tests = 0;
-    let mut error_codes: HashMap<String, ErrorCodeStatus> = HashMap::new();
-    let mut explanations: HashSet<String> = HashSet::new();
+    let errors = RwLock::new(Vec::new());
+    let found_explanations = AtomicI32::new(0);
+    let found_tests = AtomicI32::new(0);
+    let error_codes = RwLock::new(HashMap::new());
+    let explanations = RwLock::new(HashSet::new());
     // We want error codes which match the following cases:
     //
     // * foo(a, E0111, a)
@@ -219,15 +223,20 @@ pub fn check(paths: &[&Path], bad: &AtomicBool) {
             let entry_path = entry.path();
 
             if file_name == "error_codes.rs" {
-                extract_error_codes(contents, &mut error_codes, entry.path(), &mut errors);
-                found_explanations += 1;
+                extract_error_codes(
+                    contents,
+                    &mut error_codes.write().unwrap(),
+                    entry.path(),
+                    &mut errors.write().unwrap(),
+                );
+                found_explanations.fetch_add(1, Ordering::Relaxed);
             } else if entry_path.extension() == Some(OsStr::new("stderr")) {
-                extract_error_codes_from_tests(contents, &mut error_codes);
-                found_tests += 1;
+                extract_error_codes_from_tests(contents, &error_codes);
+                found_tests.fetch_add(1, Ordering::Relaxed);
             } else if entry_path.extension() == Some(OsStr::new("rs")) {
                 let path = entry.path().to_string_lossy();
                 if PATHS_TO_IGNORE_FOR_EXTRACTION.iter().all(|c| !path.contains(c)) {
-                    extract_error_codes_from_source(contents, &mut error_codes, &regex);
+                    extract_error_codes_from_source(contents, &error_codes, &regex);
                 }
             } else if entry_path
                 .parent()
@@ -236,14 +245,22 @@ pub fn check(paths: &[&Path], bad: &AtomicBool) {
                 .unwrap_or(false)
                 && entry_path.extension() == Some(OsStr::new("md"))
             {
-                explanations.insert(file_name.to_str().unwrap().replace(".md", ""));
+                explanations
+                    .write()
+                    .unwrap()
+                    .insert(file_name.to_str().unwrap().replace(".md", ""));
             }
         });
     }
-    if found_explanations == 0 {
+
+    let explanations = explanations.into_inner().unwrap();
+    let error_codes = error_codes.into_inner().unwrap();
+    let mut errors = errors.into_inner().unwrap();
+
+    if found_explanations.load(Ordering::Relaxed) == 0 {
         tidy_error!(bad, "No error code explanation was tested!");
     }
-    if found_tests == 0 {
+    if found_tests.load(Ordering::Relaxed) == 0 {
         tidy_error!(bad, "No error code was found in compilation errors!");
     }
     if explanations.is_empty() {

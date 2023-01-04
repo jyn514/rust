@@ -407,9 +407,7 @@ impl Step for Tidy {
 
         builder.info(&format!(
             "Checking stage{} tidy artifacts ({} -> {})",
-            builder.top_stage,
-            &compiler.host.triple,
-            host.triple
+            builder.top_stage, &compiler.host.triple, host.triple
         ));
         run_cargo(
             builder,
@@ -431,9 +429,7 @@ fn tool_stamp(
     mode: Mode,
     name: &str,
 ) -> PathBuf {
-    builder
-        .cargo_out(compiler, mode, target)
-        .join(format!(".{name}-check.stamp"))
+    builder.cargo_out(compiler, mode, target).join(format!(".{name}-check.stamp"))
 }
 
 macro_rules! tool_check_step {

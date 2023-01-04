@@ -57,11 +57,7 @@ fn main() {
                 drain_handles(&mut handles);
 
                 let handle = s.spawn(|| {
-                    let mut flag = false;
-                    $p::check($($args),* , &mut flag);
-                    if (flag) {
-                        bad.store(true, Ordering::Relaxed);
-                    }
+                    $p::check($($args),* , &bad);
                 });
                 handles.push_back(handle);
             }
@@ -110,12 +106,7 @@ fn main() {
         let collected = {
             drain_handles(&mut handles);
 
-            let mut flag = false;
-            let r = features::check(&src_path, &compiler_path, &library_path, &mut flag, verbose);
-            if flag {
-                bad.store(true, Ordering::Relaxed);
-            }
-            r
+            features::check(&src_path, &compiler_path, &library_path, &bad, verbose)
         };
         check!(unstable_book, &src_path, collected);
     });

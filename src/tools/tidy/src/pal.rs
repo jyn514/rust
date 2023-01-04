@@ -33,7 +33,7 @@
 use crate::walk::{filter_dirs, walk};
 use std::iter::Iterator;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Paths that may contain platform-specific code.
 const EXCEPTION_PATHS: &[&str] = &[
@@ -67,8 +67,8 @@ const EXCEPTION_PATHS: &[&str] = &[
 
 pub fn check(path: &Path, bad: &AtomicBool) {
     // Sanity check that the complex parsing here works.
-    let mut saw_target_arch = false;
-    let mut saw_cfg_bang = false;
+    let saw_target_arch = AtomicBool::new(false);
+    let saw_cfg_bang = AtomicBool::new(false);
     walk(path, filter_dirs, &mut |entry, contents| {
         let file = entry.path();
         let filestr = file.to_string_lossy().replace("\\", "/");
@@ -86,19 +86,19 @@ pub fn check(path: &Path, bad: &AtomicBool) {
             return;
         }
 
-        check_cfgs(contents, &file, bad, &mut saw_target_arch, &mut saw_cfg_bang);
+        check_cfgs(contents, &file, bad, &saw_target_arch, &saw_cfg_bang);
     });
 
-    assert!(saw_target_arch);
-    assert!(saw_cfg_bang);
+    assert!(saw_target_arch.load(Ordering::Relaxed));
+    assert!(saw_cfg_bang.load(Ordering::Relaxed));
 }
 
 fn check_cfgs(
     contents: &str,
     file: &Path,
     bad: &AtomicBool,
-    saw_target_arch: &mut bool,
-    saw_cfg_bang: &mut bool,
+    saw_target_arch: &AtomicBool,
+    saw_cfg_bang: &AtomicBool,
 ) {
     // Pull out all `cfg(...)` and `cfg!(...)` strings.
     let cfgs = parse_cfgs(contents);
@@ -118,11 +118,11 @@ fn check_cfgs(
 
     for (idx, cfg) in cfgs {
         // Sanity check that the parsing here works.
-        if !*saw_target_arch && cfg.contains("target_arch") {
-            *saw_target_arch = true
+        if cfg.contains("target_arch") {
+            saw_target_arch.store(true, Ordering::Relaxed);
         }
-        if !*saw_cfg_bang && cfg.contains("cfg!") {
-            *saw_cfg_bang = true
+        if cfg.contains("cfg!") {
+            saw_cfg_bang.store(true, Ordering::Relaxed);
         }
 
         let contains_platform_specific_cfg = cfg.contains("target_os")

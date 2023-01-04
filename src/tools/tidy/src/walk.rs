@@ -66,13 +66,15 @@ pub(crate) fn walk_no_read(
     let mut walker = ignore::WalkBuilder::new(path);
     let walker = walker.filter_entry(move |e| !skip(e.path()));
     // for entry in walker.build() {
-    walker.build_parallel().run(|| Box::new(|entry| {
-        if let Ok(entry) = entry {
-            if entry.file_type().map_or(true, |kind| kind.is_dir() || kind.is_symlink()) {
-                return WalkState::Continue;
+    walker.build_parallel().run(|| {
+        Box::new(|entry| {
+            if let Ok(entry) = entry {
+                if entry.file_type().map_or(true, |kind| kind.is_dir() || kind.is_symlink()) {
+                    return WalkState::Continue;
+                }
+                f(&entry);
             }
-            f(&entry);
-        }
-        WalkState::Continue
-    }));
+            WalkState::Continue
+        })
+    });
 }

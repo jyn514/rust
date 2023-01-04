@@ -75,14 +75,18 @@ pub fn check(path: &Path, bad: &AtomicBool) {
                         tidy_error!(
                             bad,
                             "{}: revision {} should specify `{}` as it has `--target` set",
-                            file, rev, LLVM_COMPONENTS_HEADER
+                            file,
+                            rev,
+                            LLVM_COMPONENTS_HEADER
                         );
                     }
                     (None, Some(_)) => {
                         tidy_error!(
                             bad,
                             "{}: revision {} should not specify `{}` as it doesn't need `--target`",
-                            file, rev, LLVM_COMPONENTS_HEADER
+                            file,
+                            rev,
+                            LLVM_COMPONENTS_HEADER
                         );
                     }
                     (Some(_), Some(_)) => {

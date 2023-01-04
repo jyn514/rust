@@ -7,9 +7,10 @@ use crate::walk::{filter_dirs, walk};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 
 pub fn check(path: &Path, bad: &AtomicBool) {
-    let mut map: HashMap<_, Vec<_>> = HashMap::new();
+    let map: RwLock<HashMap<_, Vec<_>>> = RwLock::new(HashMap::new());
     walk(path, |path| filter_dirs(path) || path.ends_with("src/test"), &mut |entry, contents| {
         let file = entry.path();
         let filename = file.file_name().unwrap().to_string_lossy();
@@ -44,13 +45,19 @@ pub fn check(path: &Path, bad: &AtomicBool) {
                     Ok(n) => n,
                     Err(..) => continue,
                 };
-                map.entry(code).or_default().push((file.to_owned(), num + 1, line.to_owned()));
+                map.write().unwrap().entry(code).or_default().push((
+                    file.to_owned(),
+                    num + 1,
+                    line.to_owned(),
+                ));
                 break;
             }
 
             inside_long_diag = line.contains("r##\"");
         }
     });
+
+    let map = map.into_inner().unwrap();
 
     let mut max = 0;
     for (&code, entries) in map.iter() {
