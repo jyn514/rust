@@ -1,4 +1,4 @@
-use ignore::DirEntry;
+use ignore::{DirEntry, WalkState};
 
 use std::{fs, path::Path};
 
@@ -36,7 +36,7 @@ pub fn filter_dirs(path: &Path) -> bool {
 pub fn walk_many(
     paths: &[&Path],
     skip: impl Clone + Send + Sync + 'static + Fn(&Path) -> bool,
-    f: &mut dyn FnMut(&DirEntry, &str),
+    f: &mut (dyn Send + Sync + Fn(&DirEntry, &str)),
 ) {
     for path in paths {
         walk(path, skip.clone(), f);
@@ -46,7 +46,7 @@ pub fn walk_many(
 pub fn walk(
     path: &Path,
     skip: impl Send + Sync + 'static + Fn(&Path) -> bool,
-    f: &mut dyn FnMut(&DirEntry, &str),
+    f: &mut (dyn Send + Sync + Fn(&DirEntry, &str)),
 ) {
     walk_no_read(path, skip, &mut |entry| {
         let contents = t!(fs::read(entry.path()), entry.path());
@@ -61,16 +61,18 @@ pub fn walk(
 pub(crate) fn walk_no_read(
     path: &Path,
     skip: impl Send + Sync + 'static + Fn(&Path) -> bool,
-    f: &mut dyn FnMut(&DirEntry),
+    f: &mut (dyn Send + Sync + Fn(&DirEntry)),
 ) {
     let mut walker = ignore::WalkBuilder::new(path);
     let walker = walker.filter_entry(move |e| !skip(e.path()));
-    for entry in walker.build() {
+    // for entry in walker.build() {
+    walker.build_parallel().run(|| Box::new(|entry| {
         if let Ok(entry) = entry {
             if entry.file_type().map_or(true, |kind| kind.is_dir() || kind.is_symlink()) {
-                continue;
+                return WalkState::Continue;
             }
             f(&entry);
         }
-    }
+        WalkState::Continue
+    }));
 }
