@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::read_to_string;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 use regex::Regex;
 
@@ -198,7 +199,7 @@ fn extract_error_codes_from_source(
     }
 }
 
-pub fn check(paths: &[&Path], bad: &mut bool) {
+pub fn check(paths: &[&Path], bad: &AtomicBool) {
     let mut errors = Vec::new();
     let mut found_explanations = 0;
     let mut found_tests = 0;

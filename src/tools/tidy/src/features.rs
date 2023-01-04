@@ -15,6 +15,7 @@ use std::fmt;
 use std::fs;
 use std::num::NonZeroU32;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use regex::Regex;
 
@@ -84,7 +85,7 @@ pub fn check(
     src_path: &Path,
     compiler_path: &Path,
     lib_path: &Path,
-    bad: &mut bool,
+    bad: &AtomicBool,
     verbose: bool,
 ) -> CollectedFeatures {
     let mut features = collect_lang_features(compiler_path, bad);
@@ -205,7 +206,7 @@ pub fn check(
         }
     }
 
-    if *bad {
+    if bad.load(Ordering::Relaxed) {
         return CollectedFeatures { lib: lib_features, lang: features };
     }
 
@@ -279,7 +280,7 @@ fn test_filen_gate(filen_underscore: &str, features: &mut Features) -> bool {
     false
 }
 
-pub fn collect_lang_features(base_compiler_path: &Path, bad: &mut bool) -> Features {
+pub fn collect_lang_features(base_compiler_path: &Path, bad: &AtomicBool) -> Features {
     let mut features = Features::new();
     collect_lang_features_in(&mut features, base_compiler_path, "active.rs", bad);
     collect_lang_features_in(&mut features, base_compiler_path, "accepted.rs", bad);
@@ -287,7 +288,7 @@ pub fn collect_lang_features(base_compiler_path: &Path, bad: &mut bool) -> Featu
     features
 }
 
-fn collect_lang_features_in(features: &mut Features, base: &Path, file: &str, bad: &mut bool) {
+fn collect_lang_features_in(features: &mut Features, base: &Path, file: &str, bad: &AtomicBool) {
     let path = base.join("rustc_feature").join("src").join(file);
     let contents = t!(fs::read_to_string(&path));
 
@@ -442,7 +443,7 @@ fn collect_lang_features_in(features: &mut Features, base: &Path, file: &str, ba
 
 fn get_and_check_lib_features(
     base_src_path: &Path,
-    bad: &mut bool,
+    bad: &AtomicBool,
     lang_features: &Features,
 ) -> Features {
     let mut lib_features = Features::new();

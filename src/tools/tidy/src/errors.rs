@@ -6,8 +6,9 @@
 use crate::walk::{filter_dirs, walk};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-pub fn check(path: &Path, bad: &mut bool) {
+pub fn check(path: &Path, bad: &AtomicBool) {
     let mut map: HashMap<_, Vec<_>> = HashMap::new();
     walk(path, |path| filter_dirs(path) || path.ends_with("src/test"), &mut |entry, contents| {
         let file = entry.path();
@@ -66,7 +67,7 @@ pub fn check(path: &Path, bad: &mut bool) {
         }
     }
 
-    if !*bad {
+    if !bad.load(Ordering::Relaxed) {
         println!("* {} error codes", map.len());
         println!("* highest error code: E{:04}", max);
     }

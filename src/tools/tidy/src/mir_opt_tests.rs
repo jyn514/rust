@@ -2,8 +2,9 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
-fn check_unused_files(path: &Path, bless: bool, bad: &mut bool) {
+fn check_unused_files(path: &Path, bless: bool, bad: &AtomicBool) {
     let mut rs_files = Vec::<PathBuf>::new();
     let mut output_files = HashSet::<PathBuf>::new();
     let files = walkdir::WalkDir::new(&path.join("test/mir-opt")).into_iter();
@@ -40,7 +41,7 @@ fn check_unused_files(path: &Path, bless: bool, bad: &mut bool) {
     }
 }
 
-fn check_dash_files(path: &Path, bless: bool, bad: &mut bool) {
+fn check_dash_files(path: &Path, bless: bool, bad: &AtomicBool) {
     for file in walkdir::WalkDir::new(&path.join("test/mir-opt"))
         .into_iter()
         .filter_map(Result::ok)
@@ -68,7 +69,7 @@ fn check_dash_files(path: &Path, bless: bool, bad: &mut bool) {
     }
 }
 
-pub fn check(path: &Path, bless: bool, bad: &mut bool) {
+pub fn check(path: &Path, bless: bool, bad: &AtomicBool) {
     check_unused_files(path, bless, bad);
     check_dash_files(path, bless, bad);
 }

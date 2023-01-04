@@ -2,6 +2,7 @@ use crate::features::{CollectedFeatures, Features, Status};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 pub const PATH_STR: &str = "doc/unstable-book";
 
@@ -71,7 +72,7 @@ fn collect_unstable_book_lib_features_section_file_names(base_src_path: &Path) -
     collect_unstable_book_section_file_names(&unstable_book_lib_features_path(base_src_path))
 }
 
-pub fn check(path: &Path, features: CollectedFeatures, bad: &mut bool) {
+pub fn check(path: &Path, features: CollectedFeatures, bad: &AtomicBool) {
     let lang_features = features.lang;
     let lib_features = features
         .lib

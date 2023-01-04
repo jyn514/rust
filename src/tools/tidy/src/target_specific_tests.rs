@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 const COMMENT: &str = "//";
 const LLVM_COMPONENTS_HEADER: &str = "needs-llvm-components:";
@@ -34,7 +35,7 @@ struct RevisionInfo<'a> {
     llvm_components: Option<Vec<&'a str>>,
 }
 
-pub fn check(path: &Path, bad: &mut bool) {
+pub fn check(path: &Path, bad: &AtomicBool) {
     let tests = path.join("test");
     crate::walk::walk(
         &tests,
@@ -61,8 +62,7 @@ pub fn check(path: &Path, bad: &mut bool) {
                             let info = header_map.entry(cfg).or_insert(RevisionInfo::default());
                             info.target_arch.replace(arch);
                         } else {
-                            eprintln!("{file}: seems to have a malformed --target value");
-                            *bad = true;
+                            tidy_error!(bad, "{file}: seems to have a malformed --target value");
                         }
                     }
                 }
@@ -72,18 +72,18 @@ pub fn check(path: &Path, bad: &mut bool) {
                 match (target_arch, llvm_components) {
                     (None, None) => {}
                     (Some(_), None) => {
-                        eprintln!(
+                        tidy_error!(
+                            bad,
                             "{}: revision {} should specify `{}` as it has `--target` set",
                             file, rev, LLVM_COMPONENTS_HEADER
                         );
-                        *bad = true;
                     }
                     (None, Some(_)) => {
-                        eprintln!(
+                        tidy_error!(
+                            bad,
                             "{}: revision {} should not specify `{}` as it doesn't need `--target`",
                             file, rev, LLVM_COMPONENTS_HEADER
                         );
-                        *bad = true;
                     }
                     (Some(_), Some(_)) => {
                         // FIXME: check specified components against the target architectures we

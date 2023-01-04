@@ -6,13 +6,14 @@ use ignore::Walk;
 use ignore::WalkBuilder;
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 const ENTRY_LIMIT: usize = 1000;
 // FIXME: The following limits should be reduced eventually.
 const ROOT_ENTRY_LIMIT: usize = 939;
 const ISSUES_ENTRY_LIMIT: usize = 2050;
 
-fn check_entries(path: &Path, bad: &mut bool) {
+fn check_entries(path: &Path, bad: &AtomicBool) {
     for dir in Walk::new(&path.join("test/ui")) {
         if let Ok(entry) = dir {
             if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
@@ -51,7 +52,7 @@ fn check_entries(path: &Path, bad: &mut bool) {
     }
 }
 
-pub fn check(path: &Path, bad: &mut bool) {
+pub fn check(path: &Path, bad: &AtomicBool) {
     check_entries(&path, bad);
     for path in &[&path.join("test/ui"), &path.join("test/ui-fulldeps")] {
         crate::walk::walk_no_read(path, |_| false, &mut |entry| {

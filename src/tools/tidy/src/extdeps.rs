@@ -2,13 +2,14 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// List of allowed sources for packages.
 const ALLOWED_SOURCES: &[&str] = &["\"registry+https://github.com/rust-lang/crates.io-index\""];
 
 /// Checks for external package sources. `root` is the path to the directory that contains the
 /// workspace `Cargo.toml`.
-pub fn check(root: &Path, bad: &mut bool) {
+pub fn check(root: &Path, bad: &AtomicBool) {
     // `Cargo.lock` of rust.
     let path = root.join("Cargo.lock");
 

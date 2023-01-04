@@ -8,9 +8,9 @@
 //! during normal build.
 
 use crate::walk::{filter_dirs, walk};
-use std::path::Path;
+use std::{path::Path, sync::atomic::AtomicBool};
 
-pub fn check(root_path: &Path, bad: &mut bool) {
+pub fn check(root_path: &Path, bad: &AtomicBool) {
     let core = root_path.join("core");
     let core_copy = core.clone();
     let core_tests = core.join("tests");

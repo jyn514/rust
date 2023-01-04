@@ -3,6 +3,7 @@
 use cargo_metadata::{Metadata, Package, PackageId, Resolve};
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// These are licenses that are allowed for all crates, including the runtime,
 /// rustc, tools, etc.
@@ -346,7 +347,7 @@ const FORBIDDEN_TO_HAVE_DUPLICATES: &[&str] = &[
 ///
 /// `root` is path to the directory with the root `Cargo.toml` (for the workspace). `cargo` is path
 /// to the cargo executable.
-pub fn check(root: &Path, cargo: &Path, bad: &mut bool) {
+pub fn check(root: &Path, cargo: &Path, bad: &AtomicBool) {
     let mut cmd = cargo_metadata::MetadataCommand::new();
     cmd.cargo_path(cargo)
         .manifest_path(root.join("Cargo.toml"))
@@ -397,7 +398,7 @@ fn check_license_exceptions(
     metadata: &Metadata,
     exceptions: &[(&str, &str)],
     runtime_ids: HashSet<&PackageId>,
-    bad: &mut bool,
+    bad: &AtomicBool,
 ) {
     // Validate the EXCEPTIONS list hasn't changed.
     for (name, license) in exceptions {
@@ -422,10 +423,9 @@ fn check_license_exceptions(
                 }
                 Some(pkg_license) => {
                     if pkg_license.as_str() != *license {
-                        println!("dependency exception `{name}` license has changed");
-                        println!("    previously `{license}` now `{pkg_license}`");
-                        println!("    update EXCEPTIONS for the new license");
-                        *bad = true;
+                        tidy_error!(bad, concat!("dependency exception `{}` license has changed\n",
+                        "    previously `{}` now `{}`\n",
+                        "    update EXCEPTIONS for the new license\n"), name, license, pkg_license);
                     }
                 }
             }
@@ -472,7 +472,7 @@ fn check_permitted_dependencies(
     descr: &str,
     permitted_dependencies: &[&'static str],
     restricted_dependency_crates: &[&'static str],
-    bad: &mut bool,
+    bad: &AtomicBool,
 ) {
     // Check that the PERMITTED_DEPENDENCIES does not have unused entries.
     for name in permitted_dependencies {
@@ -547,7 +547,7 @@ fn check_crate_dependencies<'a>(
 fn check_crate_duplicate(
     metadata: &Metadata,
     forbidden_to_have_duplicates: &[&str],
-    bad: &mut bool,
+    bad: &AtomicBool,
 ) {
     for &name in forbidden_to_have_duplicates {
         let matches: Vec<_> = metadata.packages.iter().filter(|pkg| pkg.name == name).collect();
@@ -634,7 +634,7 @@ fn normal_deps_of_r<'a>(
     }
 }
 
-fn check_rustfix(metadata: &Metadata, bad: &mut bool) {
+fn check_rustfix(metadata: &Metadata, bad: &AtomicBool) {
     let cargo = pkg_from_name(metadata, "cargo");
     let compiletest = pkg_from_name(metadata, "compiletest");
     let cargo_deps = deps_of(metadata, &cargo.id);

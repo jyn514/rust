@@ -18,7 +18,7 @@
 
 use crate::walk::{filter_dirs, walk};
 use regex::{Regex, RegexSet};
-use std::path::Path;
+use std::{path::Path, sync::atomic::AtomicBool};
 
 /// Error code markdown is restricted to 80 columns because they can be
 /// displayed on the console with --example.
@@ -217,7 +217,7 @@ fn is_unexplained_ignore(extension: &str, line: &str) -> bool {
     true
 }
 
-pub fn check(path: &Path, bad: &mut bool) {
+pub fn check(path: &Path, bad: &AtomicBool) {
     fn skip(path: &Path) -> bool {
         filter_dirs(path) || skip_markdown_path(path)
     }

@@ -17,7 +17,7 @@
 //! If a line ends with an opening bracket, the line is ignored and the next line will have
 //! its extra indentation ignored.
 
-use std::{fmt::Display, path::Path};
+use std::{fmt::Display, path::Path, sync::atomic::AtomicBool};
 
 use crate::walk::{filter_dirs, walk};
 
@@ -36,7 +36,7 @@ const END_COMMENT: &str = "// tidy-alphabetical-end";
 fn check_section<'a>(
     file: impl Display,
     lines: impl Iterator<Item = (usize, &'a str)>,
-    bad: &mut bool,
+    bad: &AtomicBool,
 ) {
     let content_lines = lines.take_while(|(_, line)| !line.contains(END_COMMENT));
 
@@ -94,7 +94,7 @@ fn check_section<'a>(
     }
 }
 
-pub fn check(path: &Path, bad: &mut bool) {
+pub fn check(path: &Path, bad: &AtomicBool) {
     walk(path, filter_dirs, &mut |entry, contents| {
         let file = &entry.path().display();
 

@@ -2,9 +2,9 @@
 //! different files so that relative links work properly without having to have `CARGO_PKG_NAME`
 //! set, but conceptually they should always be the same.
 
-use std::path::Path;
+use std::{path::Path, sync::atomic::AtomicBool};
 
-pub fn check(library_path: &Path, bad: &mut bool) {
+pub fn check(library_path: &Path, bad: &AtomicBool) {
     let std_name = "std/src/primitive_docs.rs";
     let core_name = "core/src/primitive_docs.rs";
     let std_contents = std::fs::read_to_string(library_path.join(std_name))

@@ -33,6 +33,7 @@
 use crate::walk::{filter_dirs, walk};
 use std::iter::Iterator;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 // Paths that may contain platform-specific code.
 const EXCEPTION_PATHS: &[&str] = &[
@@ -64,7 +65,7 @@ const EXCEPTION_PATHS: &[&str] = &[
     "library/std/src/personality/",
 ];
 
-pub fn check(path: &Path, bad: &mut bool) {
+pub fn check(path: &Path, bad: &AtomicBool) {
     // Sanity check that the complex parsing here works.
     let mut saw_target_arch = false;
     let mut saw_cfg_bang = false;
@@ -95,7 +96,7 @@ pub fn check(path: &Path, bad: &mut bool) {
 fn check_cfgs(
     contents: &str,
     file: &Path,
-    bad: &mut bool,
+    bad: &AtomicBool,
     saw_target_arch: &mut bool,
     saw_cfg_bang: &mut bool,
 ) {

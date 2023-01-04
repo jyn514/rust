@@ -11,12 +11,13 @@ pub use os_impl::*;
 #[cfg(windows)]
 mod os_impl {
     use std::path::Path;
+    use std::sync::atomic::AtomicBool;
 
     pub fn check_filesystem_support(_sources: &[&Path], _output: &Path) -> bool {
         return false;
     }
 
-    pub fn check(_path: &Path, _bad: &mut bool) {}
+    pub fn check(_path: &Path, _bad: &AtomicBool) {}
 }
 
 #[cfg(unix)]
@@ -26,6 +27,7 @@ mod os_impl {
     use std::os::unix::prelude::*;
     use std::path::Path;
     use std::process::{Command, Stdio};
+    use std::sync::atomic::AtomicBool;
 
     enum FilesystemSupport {
         Supported,
@@ -96,7 +98,7 @@ mod os_impl {
     }
 
     #[cfg(unix)]
-    pub fn check(path: &Path, bad: &mut bool) {
+    pub fn check(path: &Path, bad: &AtomicBool) {
         use std::ffi::OsStr;
 
         const ALLOWED: &[&str] = &["configure", "x"];

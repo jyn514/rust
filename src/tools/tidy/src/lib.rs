@@ -3,7 +3,7 @@
 //! This library contains the tidy lints and exposes it
 //! to be used by tools.
 
-use std::fmt::Display;
+use std::{fmt::Display, sync::atomic::{AtomicBool, Ordering}};
 
 use termcolor::WriteColor;
 
@@ -35,11 +35,11 @@ macro_rules! tidy_error {
     });
 }
 
-fn tidy_error(bad: &mut bool, args: impl Display) -> std::io::Result<()> {
+fn tidy_error(bad: &AtomicBool, args: impl Display) -> std::io::Result<()> {
     use std::io::Write;
     use termcolor::{Color, ColorChoice, ColorSpec, StandardStream};
 
-    *bad = true;
+    bad.store(true, Ordering::Relaxed);
 
     let mut stderr = StandardStream::stdout(ColorChoice::Auto);
     stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)))?;
