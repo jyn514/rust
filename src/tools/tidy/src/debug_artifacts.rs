@@ -8,7 +8,7 @@ const GRAPHVIZ_POSTFLOW_MSG: &str = "`borrowck_graphviz_postflow` attribute in t
 pub fn check(path: &Path, bad: &mut bool) {
     let test_dir: PathBuf = path.join("test");
 
-    walk(&test_dir, &mut filter_dirs, &mut |entry, contents| {
+    walk(&test_dir, filter_dirs, &mut |entry, contents| {
         let filename = entry.path();
         let is_rust = filename.extension().map_or(false, |ext| ext == "rs");
         if !is_rust {

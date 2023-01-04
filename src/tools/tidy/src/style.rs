@@ -226,7 +226,7 @@ pub fn check(path: &Path, bad: &mut bool) {
         .chain(PROBLEMATIC_CONSTS.iter().map(|v| format!("{:X}", v)))
         .collect();
     let problematic_regex = RegexSet::new(problematic_consts_strings.as_slice()).unwrap();
-    walk(path, &mut skip, &mut |entry, contents| {
+    walk(path, skip, &mut |entry, contents| {
         let file = entry.path();
         let filename = file.file_name().unwrap().to_string_lossy();
         let extensions = [".rs", ".py", ".js", ".sh", ".c", ".cpp", ".h", ".md", ".css", ".ftl"];

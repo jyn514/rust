@@ -103,7 +103,7 @@ mod os_impl {
 
         walk_no_read(
             path,
-            &mut |path| {
+            |path| {
                 filter_dirs(path)
                     || path.ends_with("src/etc")
                     // This is a list of directories that we almost certainly

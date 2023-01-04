@@ -100,7 +100,7 @@ pub fn check(
             &src_path.join("test/rustdoc-ui"),
             &src_path.join("test/rustdoc"),
         ],
-        &mut filter_dirs,
+        filter_dirs,
         &mut |entry, contents| {
             let file = entry.path();
             let filename = file.file_name().unwrap().to_string_lossy();
@@ -476,11 +476,11 @@ fn get_and_check_lib_features(
 
 fn map_lib_features(
     base_src_path: &Path,
-    mf: &mut dyn FnMut(Result<(&str, Feature), &str>, &Path, usize),
+    mf: &mut (dyn Send + Sync + FnMut(Result<(&str, Feature), &str>, &Path, usize)),
 ) {
     walk(
         base_src_path,
-        &mut |path| filter_dirs(path) || path.ends_with("src/test"),
+        |path| filter_dirs(path) || path.ends_with("src/test"),
         &mut |entry, contents| {
             let file = entry.path();
             let filename = file.file_name().unwrap().to_string_lossy();

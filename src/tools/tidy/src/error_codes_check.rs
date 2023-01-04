@@ -213,7 +213,7 @@ pub fn check(paths: &[&Path], bad: &mut bool) {
     let regex = Regex::new(r#"[(,"\s](E\d{4})[,)"]"#).unwrap();
 
     for path in paths {
-        walk(path, &mut filter_dirs, &mut |entry, contents| {
+        walk(path, filter_dirs, &mut |entry, contents| {
             let file_name = entry.file_name();
             let entry_path = entry.path();
 
