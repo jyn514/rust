@@ -361,6 +361,81 @@ impl Step for RustAnalyzer {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Tidy;
+
+impl Step for Tidy {
+    type Output = ();
+    const ONLY_HOSTS: bool = true;
+    const DEFAULT: bool = true;
+
+    fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
+        run.path("src/tools/tidy")
+    }
+
+    fn make_run(run: RunConfig<'_>) {
+        run.builder.ensure(Tidy);
+    }
+
+    fn run(self, builder: &Builder<'_>) -> Self::Output {
+        let compiler = builder.compiler(builder.top_stage, builder.config.build);
+        let host = builder.build.build;
+
+        let mut cargo = prepare_tool_cargo(
+            builder,
+            compiler,
+            Mode::ToolBootstrap,
+            host,
+            cargo_subcommand(builder.kind),
+            "src/tools/tidy",
+            SourceType::InTree,
+            &[],
+        );
+
+        // For ./x.py clippy, don't run with --all-targets because
+        // linting tests and benchmarks can produce very noisy results
+        if builder.kind != Kind::Clippy {
+            cargo.arg("--all-targets");
+        }
+
+        cargo.args(args(builder));
+
+        // Enable internal lints for clippy and rustdoc
+        // NOTE: this doesn't enable lints for any other tools unless they explicitly add `#![warn(rustc::internal)]`
+        // See https://github.com/rust-lang/rust/pull/80573#issuecomment-754010776
+        cargo.rustflag("-Zunstable-options");
+
+        builder.info(&format!(
+            "Checking stage{} tidy artifacts ({} -> {})",
+            builder.top_stage,
+            &compiler.host.triple,
+            host.triple
+        ));
+        run_cargo(
+            builder,
+            cargo,
+            &tool_stamp(builder, compiler, host, Mode::ToolBootstrap, "tidy"),
+            vec![],
+            true,
+            false,
+        );
+    }
+}
+
+/// Cargo's output path in a given stage, compiled by a particular
+/// compiler for the specified target.
+fn tool_stamp(
+    builder: &Builder<'_>,
+    compiler: Compiler,
+    target: TargetSelection,
+    mode: Mode,
+    name: &str,
+) -> PathBuf {
+    builder
+        .cargo_out(compiler, mode, target)
+        .join(format!(".{name}-check.stamp"))
+}
+
 macro_rules! tool_check_step {
     ($name:ident, $path:literal, $($alias:literal, )* $source_type:path $(, $default:literal )?) => {
         #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -422,23 +497,11 @@ macro_rules! tool_check_step {
                 run_cargo(
                     builder,
                     cargo,
-                    &stamp(builder, compiler, target),
+                    &tool_stamp(builder, compiler, target, Mode::ToolRustc, &stringify!($name).to_lowercase()),
                     vec![],
                     true,
                     false,
                 );
-
-                /// Cargo's output path in a given stage, compiled by a particular
-                /// compiler for the specified target.
-                fn stamp(
-                    builder: &Builder<'_>,
-                    compiler: Compiler,
-                    target: TargetSelection,
-                ) -> PathBuf {
-                    builder
-                        .cargo_out(compiler, Mode::ToolRustc, target)
-                        .join(format!(".{}-check.stamp", stringify!($name).to_lowercase()))
-                }
             }
         }
     };

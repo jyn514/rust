@@ -649,6 +649,7 @@ impl<'a> Builder<'a> {
                 check::Rustc,
                 check::Rustdoc,
                 check::CodegenBackend,
+                check::Tidy,
                 check::Clippy,
                 check::Miri,
                 check::CargoMiri,
