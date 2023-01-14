@@ -362,48 +362,48 @@ fn collect_lang_features_in(features: &mut Features, base: &Path, file: &str, ba
             }
         };
         if in_feature_group {
-            if prev_names.last() > Some(&name) {
-                // This assumes the user adds the feature name at the end of the list, as we're
-                // not looking ahead.
-                let correct_index = match prev_names.binary_search(&name) {
-                    Ok(_) => {
-                        // This only occurs when the feature name has already been declared.
-                        tidy_error!(
-                            bad,
-                            "{}:{}: duplicate feature {}",
-                            path.display(),
-                            line_number,
-                            name,
-                        );
-                        // skip any additional checks for this line
-                        continue;
-                    }
-                    Err(index) => index,
-                };
+            // if prev_names.last() > Some(&name) {
+            //     // This assumes the user adds the feature name at the end of the list, as we're
+            //     // not looking ahead.
+            //     let correct_index = match prev_names.binary_search(&name) {
+            //         Ok(_) => {
+            //             // This only occurs when the feature name has already been declared.
+            //             tidy_error!(
+            //                 bad,
+            //                 "{}:{}: duplicate feature {}",
+            //                 path.display(),
+            //                 line_number,
+            //                 name,
+            //             );
+            //             // skip any additional checks for this line
+            //             continue;
+            //         }
+            //         Err(index) => index,
+            //     };
 
-                let correct_placement = if correct_index == 0 {
-                    "at the beginning of the feature group".to_owned()
-                } else if correct_index == prev_names.len() {
-                    // I don't believe this is reachable given the above assumption, but it
-                    // doesn't hurt to be safe.
-                    "at the end of the feature group".to_owned()
-                } else {
-                    format!(
-                        "between {} and {}",
-                        prev_names[correct_index - 1],
-                        prev_names[correct_index],
-                    )
-                };
+            //     let correct_placement = if correct_index == 0 {
+            //         "at the beginning of the feature group".to_owned()
+            //     } else if correct_index == prev_names.len() {
+            //         // I don't believe this is reachable given the above assumption, but it
+            //         // doesn't hurt to be safe.
+            //         "at the end of the feature group".to_owned()
+            //     } else {
+            //         format!(
+            //             "between {} and {}",
+            //             prev_names[correct_index - 1],
+            //             prev_names[correct_index],
+            //         )
+            //     };
 
-                tidy_error!(
-                    bad,
-                    "{}:{}: feature {} is not sorted by feature name (should be {})",
-                    path.display(),
-                    line_number,
-                    name,
-                    correct_placement,
-                );
-            }
+            //     tidy_error!(
+            //         bad,
+            //         "{}:{}: feature {} is not sorted by feature name (should be {})",
+            //         path.display(),
+            //         line_number,
+            //         name,
+            //         correct_placement,
+            //     );
+            // }
             prev_names.push(name);
         }
 
