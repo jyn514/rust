@@ -10,7 +10,7 @@ use tidy::features::{collect_lang_features, Status};
 use tidy::walk::walk;
 use tidy::*;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::ffi::OsStr;
 use std::num::NonZeroUsize;
@@ -38,7 +38,6 @@ fn main() {
     let verbose = args.iter().any(|s| *s == "--verbose");
     let bless = args.iter().any(|s| *s == "--bless");
 
-    // let bad = std::sync::Arc::new(AtomicBool::new(false));
     let mut bad = false;
     let current_version: Version = include_str!("../../../version").trim_end().parse().unwrap();
 
@@ -50,6 +49,11 @@ fn main() {
 
     let mut num_features = 0;
     let mut unstable_libs_features = HashSet::new();
+
+    // Only `stable` features have a `since` version.
+    // This list was hacked together with `unstable_feature_versions.sh`.
+    let feature_versions_introduced: HashMap<String, String> =
+        serde_json::from_str(include_str!("../../../../feature_introduced_version.json")).unwrap();
 
     let mut check_feature = |name: &str| {
         num_features += 1;
@@ -65,10 +69,13 @@ fn main() {
             Status::Stable => {} // totally fine
             Status::Unstable => {
                 // let stable_date = lib_feature.since.unwrap_or_else(|| panic!("missing `since` for {name}"));
-                // if stable_date == current_version {
-                // num_just_added_features += 1;
-                unstable_libs_features.insert(name.to_owned());
-                // }
+                let introduced_version = feature_versions_introduced
+                    .get(name)
+                    .unwrap_or_else(|| panic!("missing introduced version for {name}"));
+                if introduced_version.parse::<Version>().unwrap() == current_version {
+                    // num_just_added_features += 1;
+                    unstable_libs_features.insert(name.to_owned());
+                }
             }
         }
     };
@@ -90,91 +97,8 @@ fn main() {
     );
 
     assert!(num_features > 0);
-    println!(
-        "found {} library features used in the compiler",
-        unstable_libs_features.len()
-    );
+    println!("found {} library features used in the compiler", unstable_libs_features.len());
     for feature in unstable_libs_features {
         println!("{feature}");
     }
-
-    // scope(|s| {
-    //     let mut handles: VecDeque<ScopedJoinHandle<'_, ()>> =
-    //         VecDeque::with_capacity(concurrency.get());
-
-    //     macro_rules! check {
-    //         ($p:ident $(, $args:expr)* ) => {
-    //             while handles.len() >= concurrency.get() {
-    //                 handles.pop_front().unwrap().join().unwrap();
-    //             }
-
-    //             let handle = s.spawn(|| {
-    //                 let mut flag = false;
-    //                 $p::check($($args),* , &mut flag);
-    //                 if (flag) {
-    //                     bad.store(true, Ordering::Relaxed);
-    //                 }
-    //             });
-    //             handles.push_back(handle);
-    //         }
-    //     }
-
-    // check!(target_specific_tests, &src_path);
-
-    // // Checks that are done on the cargo workspace.
-    // check!(deps, &root_path, &cargo);
-    // check!(extdeps, &root_path);
-
-    // // Checks over tests.
-    // check!(debug_artifacts, &src_path);
-    // check!(ui_tests, &src_path);
-    // check!(mir_opt_tests, &src_path, bless);
-
-    // // Checks that only make sense for the compiler.
-    // check!(errors, &compiler_path);
-    // check!(error_codes_check, &[&src_path, &compiler_path]);
-
-    // // Checks that only make sense for the std libs.
-    // check!(pal, &library_path);
-    // check!(primitive_docs, &library_path);
-
-    // // Checks that need to be done for both the compiler and std libraries.
-    // check!(unit_tests, &src_path);
-    // check!(unit_tests, &compiler_path);
-    // check!(unit_tests, &library_path);
-
-    // if bins::check_filesystem_support(&[&root_path], &output_directory) {
-    //     check!(bins, &root_path);
-    // }
-
-    // check!(style, &src_path);
-    // check!(style, &compiler_path);
-    // check!(style, &library_path);
-
-    // check!(edition, &src_path);
-    // check!(edition, &compiler_path);
-    // check!(edition, &library_path);
-
-    // check!(alphabetical, &src_path);
-    // check!(alphabetical, &compiler_path);
-    // check!(alphabetical, &library_path);
-
-    // let collected = {
-    //     while handles.len() >= concurrency.get() {
-    //         handles.pop_front().unwrap().join().unwrap();
-    //     }
-    //     let mut flag = false;
-    //     let r = features::check(&src_path, &compiler_path, &library_path, &mut flag, verbose);
-    //     if flag {
-    //         bad.store(true, Ordering::Relaxed);
-    //     }
-    //     r
-    // };
-    // check!(unstable_book, &src_path, collected);
-    // });
-
-    // if bad.load(Ordering::Relaxed) {
-    //     eprintln!("some tidy checks failed");
-    //     process::exit(1);
-    // }
 }

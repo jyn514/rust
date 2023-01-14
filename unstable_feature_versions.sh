@@ -1,11 +1,10 @@
 #!/bin/sh
+echo '{'
 while read -r feature; do
-    echo "Looking for $feature (commit is $commit)"
     # Commit where this feature was first introduced.
     commit=$(git log --pretty=%H --reverse --pickaxe-regex -S 'feature\s*=\s*"'$feature \
         -- library/ src/lib{core,alloc,std,test,proc_macro,unwind,stdarch,unwind,rtstartup,portable-simd,panic_unwind,panic_abort,backtrace} \
-        | tee /dev/tty | head -n1 | tee /dev/tty)
-    echo "$feature introduced in $commit"
+        | head -n1)
     # src/version was first introduced in 1.48. Before that we have to parse `channel.rs`.
     # As a hack, just pretend that any feature introduced earlier was introduced in 1.47; we don't
     # actually care about the exact version, just whether it was used in the compiler on beta or
@@ -19,5 +18,6 @@ while read -r feature; do
         fi
         version="1.47.0"
     fi
-    echo "$feature introduced in $version"
+    echo '"'$feature'": "'$version'",'
 done < libs_features.txt
+echo '}'
