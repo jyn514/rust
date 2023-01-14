@@ -65,5 +65,7 @@
 "const_black_box": "1.59.0",
 "coerce_unsized": "1.47.0",
 "extend_one": "1.47.0",
-"bool_to_option": "1.47.0"
+"bool_to_option": "1.47.0",
+"bench_black_box": "1.53.0",
+"iter_zip": "1.53.0"
 }
