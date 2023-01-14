@@ -64,5 +64,6 @@
 "get_mut_unchecked": "1.47.0",
 "const_black_box": "1.59.0",
 "coerce_unsized": "1.47.0",
-"extend_one": "1.47.0"
+"extend_one": "1.47.0",
+"bool_to_option": "1.47.0"
 }

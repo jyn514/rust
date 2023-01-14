@@ -1,4 +1,3 @@
-
 //! Tidy checks source code in this repository.
 //!
 //! This program runs all of the various tidy checks for style, cleanliness,
