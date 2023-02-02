@@ -418,7 +418,7 @@ where
         }
 
         let prof_timer = qcx.dep_context().profiler().query_provider();
-        let result = qcx.start_query(job_id, Q::DEPTH_LIMIT, None, || Q::compute(qcx, key));
+        let result = qcx.start_query(job_id, Q::DEPTH_LIMIT, None, &mut || Q::compute(qcx, key));
         let dep_node_index = dep_graph.next_virtual_depnode_index();
         prof_timer.finish_with_query_invocation_id(dep_node_index.into());
 
@@ -442,7 +442,7 @@ where
 
         // The diagnostics for this query will be promoted to the current session during
         // `try_mark_green()`, so we can ignore them here.
-        if let Some(ret) = qcx.start_query(job_id, false, None, || {
+        if let Some(ret) = qcx.start_query(job_id, false, None, &mut || {
             try_load_from_disk_and_cache_in_memory::<Q, Qcx>(qcx, &key, &dep_node)
         }) {
             return ret;
@@ -453,7 +453,7 @@ where
     let diagnostics = Lock::new(ThinVec::new());
 
     let (result, dep_node_index) =
-        qcx.start_query(job_id, Q::DEPTH_LIMIT, Some(&diagnostics), || {
+        qcx.start_query(job_id, Q::DEPTH_LIMIT, Some(&diagnostics), &mut || {
             if Q::ANON {
                 return dep_graph
                     .with_anon_task(*qcx.dep_context(), Q::DEP_KIND, || Q::compute(qcx, key));
