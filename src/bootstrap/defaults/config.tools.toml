@@ -10,6 +10,8 @@ incremental = true
 # Download rustc from CI instead of building it from source.
 # This cuts compile times by almost 60x, but means you can't modify the compiler.
 download-rustc = "if-unchanged"
+# Include line numbers in backtraces.
+debuginfo-level-tools = 1
 
 [build]
 # Document with the in-tree rustdoc by default, since `download-rustc` makes it quick to compile.
