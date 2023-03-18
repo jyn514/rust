@@ -1621,6 +1621,17 @@ impl<'a> Builder<'a> {
             SplitDebuginfo::Off => rustflags.arg("-Csplit-debuginfo=off"),
         };
 
+        // Decrease the amount of debuginfo we generate for `debuginfo_level = 1`.
+        // See #64405 for context.
+        // cfg(not(bootstrap))
+        if compiler.stage > 0 {
+            rustflags.arg("-Zforce-full-debuginfo=no");
+        }
+        // Decrease the size of the debuginfo we generate. zlib has incomplete support on some
+        // platforms, but that's ok because `thorin` can read it and we don't ship debuginfo to
+        // users.
+        rustflags.arg("-Clink-args=-Wl,--compress-debug-sections=zlib");
+
         if self.config.cmd.bless() {
             // Bless `expect!` tests.
             cargo.env("UPDATE_EXPECT", "1");
