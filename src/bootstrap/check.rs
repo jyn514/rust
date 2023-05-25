@@ -1,6 +1,6 @@
 //! Implementation of compiling the compiler and standard library, in "check"-based modes.
 
-use crate::builder::{Builder, Kind, RunConfig, ShouldRun, Step};
+use crate::builder::{Builder, Kind, RunConfig, ShouldRun, Step, crate_description};
 use crate::cache::Interned;
 use crate::compile::{add_to_sysroot, run_cargo, rustc_cargo, rustc_cargo_env, std_cargo};
 use crate::config::TargetSelection;
@@ -167,6 +167,20 @@ impl Step for Std {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Rustc {
     pub target: TargetSelection,
+    /// Whether to build only a subset of crates in the standard library.
+    ///
+    /// This shouldn't be used from other steps; see the comment on [`Rustc`].
+    crates: Interned<Vec<String>>,
+}
+
+impl Rustc {
+    pub fn new(target: TargetSelection, builder: &Builder<'_>) -> Self {
+        let mut crates = vec![];
+        for krate in builder.in_tree_crates("rustc-main", None) {
+            crates.push(krate.name.to_string());
+        }
+        Self { target, crates: INTERNER.intern_list(crates) }
+    }
 }
 
 impl Step for Rustc {
@@ -175,11 +189,13 @@ impl Step for Rustc {
     const DEFAULT: bool = true;
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
-        run.all_krates("rustc-main").path("compiler")
+        let crates = run.builder.in_tree_crates("rustc-main", None);
+        run.crates(crates).path("compiler")
     }
 
     fn make_run(run: RunConfig<'_>) {
-        run.builder.ensure(Rustc { target: run.target });
+        let crates = run.cargo_crates_in_set();
+        run.builder.ensure(Rustc { target: run.target, crates });
     }
 
     /// Builds the compiler.
@@ -215,17 +231,17 @@ impl Step for Rustc {
         // For ./x.py clippy, don't run with --all-targets because
         // linting tests and benchmarks can produce very noisy results
         if builder.kind != Kind::Clippy {
-            cargo.arg("--all-targets");
+            // cargo.arg("--all-targets");
         }
 
-        // Explicitly pass -p for all compiler krates -- this will force cargo
+        // Explicitly pass -p for all compiler crates -- this will force cargo
         // to also check the tests/benches/examples for these crates, rather
         // than just the leaf crate.
-        for krate in builder.in_tree_crates("rustc-main", Some(target)) {
-            cargo.arg("-p").arg(krate.name);
+        for krate in &*self.crates {
+            cargo.arg("-p").arg(krate);
         }
 
-        let _guard = builder.msg_check("compiler artifacts", target);
+        let _guard = builder.msg_check(format_args!("compiler artifacts{}", crate_description(&self.crates)), target);
         run_cargo(
             builder,
             cargo,
@@ -268,7 +284,7 @@ impl Step for CodegenBackend {
         let target = self.target;
         let backend = self.backend;
 
-        builder.ensure(Rustc { target });
+        builder.ensure(Rustc::new(target, builder));
 
         let mut cargo = builder.cargo(
             compiler,
@@ -386,7 +402,7 @@ macro_rules! tool_check_step {
                 let compiler = builder.compiler(builder.top_stage, builder.config.build);
                 let target = self.target;
 
-                builder.ensure(Rustc { target });
+                builder.ensure(Rustc::new(target, builder));
 
                 let mut cargo = prepare_tool_cargo(
                     builder,
@@ -402,7 +418,7 @@ macro_rules! tool_check_step {
                 // For ./x.py clippy, don't run with --all-targets because
                 // linting tests and benchmarks can produce very noisy results
                 if builder.kind != Kind::Clippy {
-                    cargo.arg("--all-targets");
+                    // cargo.arg("--all-targets");
                 }
 
                 // Enable internal lints for clippy and rustdoc
