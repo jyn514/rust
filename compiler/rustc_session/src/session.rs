@@ -1389,7 +1389,7 @@ pub fn build_session(
 
     let target_cfg = config::build_target_config(&sopts, target_override, &sysroot);
     let host_triple = TargetTriple::from_triple(config::host_triple());
-    let (host, target_warnings) = Target::search(&host_triple, &sysroot).unwrap_or_else(|e| {
+    let (host, target_warnings) = crate::target_spec::search(&host_triple, &sysroot).unwrap_or_else(|e| {
         early_error(sopts.error_format, format!("Error loading host specification: {e}"))
     });
     for warning in target_warnings.warning_messages() {

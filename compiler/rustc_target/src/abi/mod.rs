@@ -1,8 +1,6 @@
 pub use Integer::*;
 pub use Primitive::*;
 
-use crate::json::{Json, ToJson};
-
 use std::ops::Deref;
 
 use rustc_macros::HashStable_Generic;
@@ -10,12 +8,6 @@ use rustc_macros::HashStable_Generic;
 pub mod call;
 
 pub use rustc_abi::*;
-
-impl ToJson for Endian {
-    fn to_json(&self) -> Json {
-        self.as_str().to_json()
-    }
-}
 
 /// The layout of a type, alongside the type itself.
 /// Provides various type traversal APIs (e.g., recursing into fields).

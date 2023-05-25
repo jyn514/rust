@@ -28,7 +28,6 @@ extern crate tracing;
 
 pub mod abi;
 pub mod asm;
-pub mod json;
 pub mod spec;
 
 #[cfg(test)]

@@ -42,7 +42,7 @@ use rustc_session::{config, Session};
 use rustc_session::{early_error, early_error_no_abort, early_warn};
 use rustc_span::source_map::{FileLoader, FileName};
 use rustc_span::symbol::sym;
-use rustc_target::json::ToJson;
+use rustc_session::target_json::ToJson;
 use rustc_target::spec::{Target, TargetTriple};
 
 use std::cmp::max;

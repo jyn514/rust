@@ -34,6 +34,8 @@ pub mod cstore;
 pub mod filesearch;
 mod options;
 pub mod search_paths;
+pub mod target_json;
+pub mod target_spec;
 
 mod session;
 pub use session::*;

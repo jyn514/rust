@@ -1313,7 +1313,7 @@ pub(super) fn build_target_config(
     sysroot: &Path,
 ) -> Target {
     let target_result = target_override.map_or_else(
-        || Target::search(&opts.target_triple, sysroot),
+        || crate::target_spec::search(&opts.target_triple, sysroot),
         |t| Ok((t, TargetWarnings::empty())),
     );
     let (target, target_warnings) = target_result.unwrap_or_else(|e| {

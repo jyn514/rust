@@ -40,7 +40,6 @@
 //! but not gcc's. As a result rustc cannot link with C++ static libraries (#36710)
 //! when linking in self-contained mode.
 
-use crate::json::{Json, ToJson};
 use crate::spec::LinkOutputKind;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -145,17 +144,5 @@ impl FromStr for LinkSelfContainedDefault {
             "mingw" => LinkSelfContainedDefault::Mingw,
             _ => return Err(()),
         })
-    }
-}
-
-impl ToJson for LinkSelfContainedDefault {
-    fn to_json(&self) -> Json {
-        match *self {
-            LinkSelfContainedDefault::False => "false",
-            LinkSelfContainedDefault::True => "true",
-            LinkSelfContainedDefault::Musl => "musl",
-            LinkSelfContainedDefault::Mingw => "mingw",
-        }
-        .to_json()
     }
 }

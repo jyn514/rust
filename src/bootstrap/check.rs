@@ -215,7 +215,7 @@ impl Step for Rustc {
         // For ./x.py clippy, don't run with --all-targets because
         // linting tests and benchmarks can produce very noisy results
         if builder.kind != Kind::Clippy {
-            cargo.arg("--all-targets");
+            // cargo.arg("--all-targets");
         }
 
         // Explicitly pass -p for all compiler krates -- this will force cargo

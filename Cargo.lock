@@ -4180,6 +4180,7 @@ dependencies = [
  "rustc_serialize",
  "rustc_span",
  "rustc_target",
+ "serde_json",
  "smallvec",
  "termize",
  "tracing",
@@ -4247,7 +4248,6 @@ dependencies = [
  "rustc_macros",
  "rustc_serialize",
  "rustc_span",
- "serde_json",
  "tracing",
 ]
 
