@@ -290,6 +290,7 @@ docker \
   --env DEPLOY \
   --env DEPLOY_ALT \
   --env CI \
+  --env DOWNLOAD_RUSTC \
   --env GITHUB_ACTIONS \
   --env GITHUB_REF \
   --env GITHUB_STEP_SUMMARY="/checkout/obj/${SUMMARY_FILE}" \
