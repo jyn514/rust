@@ -24,6 +24,7 @@ use crate::core::config::flags::{Color, Flags, Warnings};
 use crate::utils::cache::{Interned, INTERNER};
 use crate::utils::channel::{self, GitInfo};
 use crate::utils::helpers::{exe, output, t};
+use build_helper::ci::CiEnv;
 use build_helper::exit;
 use once_cell::sync::OnceCell;
 use semver::Version;
@@ -2065,11 +2066,15 @@ impl Config {
 
         // Look for a version to compare to based on the current commit.
         // Only commits merged by bors will have CI artifacts.
+
+        // If we are running in CI, the current commit will never have artifacts already built.
+        let tip_commit = if CiEnv::is_ci() { "HEAD^" } else { "HEAD" };
+        // FIXME(#113250): This may not be the best way to find the right commit; it certainly doesn't match what we do for LLVM.
         let merge_base = output(
             self.git()
                 .arg("rev-list")
                 .arg(format!("--author={}", self.stage0_metadata.config.git_merge_commit_email))
-                .args(&["-n1", "--first-parent", "HEAD"]),
+                .args(&["-n1", "--first-parent", tip_commit]),
         );
         let commit = merge_base.trim_end();
         if commit.is_empty() {
