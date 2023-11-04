@@ -1614,7 +1614,17 @@ impl<'a> Builder<'a> {
         // Clippy support is a hack and uses the default `cargo-clippy` in path.
         // Don't override RUSTC so that the `cargo-clippy` in path will be run.
         if cmd != "clippy" {
-            cargo.env("RUSTC", self.bootstrap_out.join("rustc"));
+            // Set RUSTC_WRAPPER to the bootstrap shim, which switches between beta and in-tree
+            // sysroot depending on whether we're building build scripts.
+            // NOTE: we intentionally use RUSTC_WRAPPER so that we can support clippy - RUSTC is not
+            // respected by clippy-driver; RUSTC_WRAPPER happens earlier, before clippy runs.
+            cargo.env("RUSTC_WRAPPER", self.bootstrap_out.join("rustc"));
+
+            // Someone might have set some previous rustc wrapper (e.g.
+            // sccache) before bootstrap overrode it. Respect that variable.
+            if let Some(existing_wrapper) = env::var_os("RUSTC_WRAPPER") {
+                cargo.env("RUSTC_WRAPPER_REAL", existing_wrapper);
+            }
         }
 
         // Dealing with rpath here is a little special, so let's go into some
