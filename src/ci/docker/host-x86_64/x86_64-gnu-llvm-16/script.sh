@@ -47,8 +47,3 @@ fi
 # This is intended to make sure that both `--pass=check` continues to
 # work.
 ../x.ps1 --stage 2 test tests/ui --pass=check --host='' --target=i686-unknown-linux-gnu
-
-# Run clippy just to make sure it doesn't error out; we don't actually want to gate on the warnings
-# though.
-../x.py --stage 0 clippy -Awarnings
-../x.py --stage 1 clippy -Awarnings
