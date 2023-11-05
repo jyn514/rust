@@ -83,7 +83,11 @@ fn main() {
             args.remove(0)
         }
     } else {
-        args.remove(0);
+        // Cargo doesn't respect RUSTC_WRAPPER for version information >:(
+        // don't remove the first arg if we're being run as RUSTC instead of RUSTC_WRAPPER.
+        if args[0] == env::current_exe().expect("couldn't get path to rustc shim") {
+            args.remove(0);
+        }
         rustc_real
     };
 

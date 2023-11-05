@@ -1643,6 +1643,8 @@ impl<'a> Builder<'a> {
         // NOTE: we intentionally use RUSTC_WRAPPER so that we can support clippy - RUSTC is not
         // respected by clippy-driver; RUSTC_WRAPPER happens earlier, before clippy runs.
         cargo.env("RUSTC_WRAPPER", self.bootstrap_out.join("rustc"));
+        // NOTE: we also need to set RUSTC so cargo can run `rustc -vV`; apparently that ignores RUSTC_WRAPPER >:(
+        cargo.env("RUSTC", self.bootstrap_out.join("rustc"));
 
         // Someone might have set some previous rustc wrapper (e.g.
         // sccache) before bootstrap overrode it. Respect that variable.
