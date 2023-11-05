@@ -22,7 +22,7 @@ pub(crate) struct TerseFormatter<T> {
     /// Number of columns to fill when aligning names
     max_name_len: usize,
 
-    test_count: usize,
+    test_column: usize,
     total_test_count: usize,
 }
 
@@ -38,7 +38,7 @@ impl<T: Write> TerseFormatter<T> {
             use_color,
             max_name_len,
             is_multithreaded,
-            test_count: 0,
+            test_column: 0,
             total_test_count: 0, // initialized later, when write_run_start is called
         }
     }
@@ -65,15 +65,15 @@ impl<T: Write> TerseFormatter<T> {
         color: term::color::Color,
     ) -> io::Result<()> {
         self.write_pretty(result, color)?;
-        if self.test_count % QUIET_MODE_MAX_COLUMN == QUIET_MODE_MAX_COLUMN - 1 {
+        if self.test_column % QUIET_MODE_MAX_COLUMN == QUIET_MODE_MAX_COLUMN - 1 {
             // We insert a new line regularly in order to flush the
             // screen when dealing with line-buffered output (e.g., piping to
             // `stamp` in the rust CI).
-            let out = format!(" {}/{}\n", self.test_count + 1, self.total_test_count);
+            let out = format!(" {}/{}\n", self.test_column + 1, self.total_test_count);
             self.write_plain(out)?;
         }
 
-        self.test_count += 1;
+        self.test_column += 1;
         Ok(())
     }
 
