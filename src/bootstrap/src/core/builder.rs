@@ -1406,8 +1406,6 @@ impl<'a> Builder<'a> {
             // so it has no way of knowing the sysroot.
             rustflags.arg("--sysroot");
             rustflags.arg(sysroot_str);
-            // Only run clippy on a very limited subset of crates (in particular, not build scripts).
-            cargo.arg("-Zunstable-options");
         }
 
         let use_new_symbol_mangling = match self.config.rust_new_symbol_mangling {
