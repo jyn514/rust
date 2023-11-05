@@ -47,8 +47,12 @@ impl<T: Write> TerseFormatter<T> {
         self.write_short_result(".", term::color::GREEN)
     }
 
-    pub fn write_failed(&mut self) -> io::Result<()> {
-        self.write_short_result("F", term::color::RED)
+    pub fn write_failed(&mut self, name: &str) -> io::Result<()> {
+        // Put failed tests on their own line and include the test name, so that it's faster
+        // to see which test failed without having to wait for them all to run.
+        self.write_plain(format!("\n{name} --- "))?;
+        self.write_pretty("F", term::color::RED)?;
+        self.write_progress()
     }
 
     pub fn write_ignored(&mut self) -> io::Result<()> {
@@ -65,15 +69,21 @@ impl<T: Write> TerseFormatter<T> {
         color: term::color::Color,
     ) -> io::Result<()> {
         self.write_pretty(result, color)?;
-        if self.test_column % QUIET_MODE_MAX_COLUMN == QUIET_MODE_MAX_COLUMN - 1 {
+        self.test_column += 1;
+        if self.test_column == QUIET_MODE_MAX_COLUMN {
             // We insert a new line regularly in order to flush the
             // screen when dealing with line-buffered output (e.g., piping to
             // `stamp` in the rust CI).
-            let out = format!(" {}/{}\n", self.test_column + 1, self.total_test_count);
-            self.write_plain(out)?;
+            self.write_progress()?;
         }
 
-        self.test_column += 1;
+        Ok(())
+    }
+
+    fn write_progress(&mut self) -> io::Result<()> {
+        let out = format!(" {}/{}\n", self.test_column, self.total_test_count);
+        self.write_plain(out)?;
+        self.test_column = 0;
         Ok(())
     }
 
@@ -213,7 +223,7 @@ impl<T: Write> OutputFormatter for TerseFormatter<T> {
         match *result {
             TestResult::TrOk => self.write_ok(),
             TestResult::TrFailed | TestResult::TrFailedMsg(_) | TestResult::TrTimedFail => {
-                self.write_failed()
+                self.write_failed(desc.name.as_slice())
             }
             TestResult::TrIgnored => self.write_ignored(),
             TestResult::TrBench(ref bs) => {
