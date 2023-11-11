@@ -570,7 +570,6 @@ class RustBuild(object):
                 ("rust-std-{}".format(toolchain_suffix), "rust-std-{}".format(self.build)),
                 ("rustc-{}".format(toolchain_suffix), "rustc"),
                 ("cargo-{}".format(toolchain_suffix), "cargo"),
-                ("clippy-{}".format(toolchain_suffix), "clippy-preview"),
             ]
 
             tarballs_download_info = [

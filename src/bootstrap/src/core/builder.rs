@@ -1165,7 +1165,7 @@ impl<'a> Builder<'a> {
 
         if run_compiler.stage == 0 {
             // `ensure(Clippy { stage: 0 })` *builds* clippy with stage0, it doesn't use the beta clippy.
-            let cargo_clippy = self.initial_rustc.parent().unwrap().join("cargo-clippy");
+            let cargo_clippy = self.build.config.download_clippy();
             let mut cmd = Command::new(cargo_clippy);
             cmd.env("PATH", &path);
             return cmd;
