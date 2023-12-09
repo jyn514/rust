@@ -16,7 +16,7 @@
 //! never get replaced.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::Instant;
 
@@ -85,7 +85,12 @@ fn main() {
     } else {
         // Cargo doesn't respect RUSTC_WRAPPER for version information >:(
         // don't remove the first arg if we're being run as RUSTC instead of RUSTC_WRAPPER.
-        if args[0] == env::current_exe().expect("couldn't get path to rustc shim") {
+        // Cargo also sometimes doesn't pass the `.exe` suffix on Windows - add it manually.
+        let current_exe = env::current_exe().expect("couldn't get path to rustc shim");
+        // NOTE: we intentionally pass the name of the host, not the target.
+        let host = env::var("CFG_COMPILER_BUILD_TRIPLE").unwrap();
+        let arg0 = exe(args[0].to_str().expect("only utf8 paths are supported"), &host);
+        if Path::new(&arg0) == current_exe {
             args.remove(0);
         }
         rustc_real
