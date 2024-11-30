@@ -1754,7 +1754,7 @@ fn exec_linker(
         // File::sync_all() calls FlushFileBuffers() down the line, which solves the problem.
         //
         // А full writeup of the original Chrome bug can be found at
-        // randomascii.wordpress.com/2018/02/25/compiler-bug-linker-bug-windows-kernel-bug/amp
+        // https://randomascii.wordpress.com/2018/02/25/compiler-bug-linker-bug-windows-kernel-bug/amp
 
         if let &Ok(ref out) = command_output {
             if out.status.success() {
