@@ -1001,7 +1001,7 @@ fn link_natively(
                 let err = errors::LinkingFailed {
                     linker_path: &linker_path,
                     exit_status: prog.status,
-                    command: &cmd,
+                    command: cmd,
                     escaped_output,
                     verbose: sess.opts.verbose,
                 };
