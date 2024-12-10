@@ -10,11 +10,11 @@ use crate::{fs, regex};
 pub fn assert_equals<A: AsRef<str>, E: AsRef<str>>(actual: A, expected: E) {
     let actual = actual.as_ref();
     let expected = expected.as_ref();
+    eprintln!("=== ACTUAL TEXT ===");
+    eprintln!("{}", actual);
+    eprintln!("=== EXPECTED ===");
+    eprintln!("{}", expected);
     if actual != expected {
-        eprintln!("=== ACTUAL TEXT ===");
-        eprintln!("{}", actual);
-        eprintln!("=== EXPECTED ===");
-        eprintln!("{}", expected);
         panic!("expected text was not found in actual text");
     }
 }
@@ -24,11 +24,11 @@ pub fn assert_equals<A: AsRef<str>, E: AsRef<str>>(actual: A, expected: E) {
 pub fn assert_contains<H: AsRef<str>, N: AsRef<str>>(haystack: H, needle: N) {
     let haystack = haystack.as_ref();
     let needle = needle.as_ref();
+    eprintln!("=== HAYSTACK ===");
+    eprintln!("{}", haystack);
+    eprintln!("=== NEEDLE ===");
+    eprintln!("{}", needle);
     if !haystack.contains(needle) {
-        eprintln!("=== HAYSTACK ===");
-        eprintln!("{}", haystack);
-        eprintln!("=== NEEDLE ===");
-        eprintln!("{}", needle);
         panic!("needle was not found in haystack");
     }
 }
@@ -38,11 +38,11 @@ pub fn assert_contains<H: AsRef<str>, N: AsRef<str>>(haystack: H, needle: N) {
 pub fn assert_not_contains<H: AsRef<str>, N: AsRef<str>>(haystack: H, needle: N) {
     let haystack = haystack.as_ref();
     let needle = needle.as_ref();
+    eprintln!("=== HAYSTACK ===");
+    eprintln!("{}", haystack);
+    eprintln!("=== NEEDLE ===");
+    eprintln!("{}", needle);
     if haystack.contains(needle) {
-        eprintln!("=== HAYSTACK ===");
-        eprintln!("{}", haystack);
-        eprintln!("=== NEEDLE ===");
-        eprintln!("{}", needle);
         panic!("needle was unexpectedly found in haystack");
     }
 }
@@ -53,11 +53,11 @@ pub fn assert_contains_regex<H: AsRef<str>, N: AsRef<str>>(haystack: H, needle: 
     let haystack = haystack.as_ref();
     let needle = needle.as_ref();
     let re = regex::Regex::new(needle).unwrap();
+    eprintln!("=== HAYSTACK ===");
+    eprintln!("{}", haystack);
+    eprintln!("=== NEEDLE ===");
+    eprintln!("{}", needle);
     if !re.is_match(haystack) {
-        eprintln!("=== HAYSTACK ===");
-        eprintln!("{}", haystack);
-        eprintln!("=== NEEDLE ===");
-        eprintln!("{}", needle);
         panic!("needle was not found in haystack");
     }
 }
@@ -68,11 +68,11 @@ pub fn assert_not_contains_regex<H: AsRef<str>, N: AsRef<str>>(haystack: H, need
     let haystack = haystack.as_ref();
     let needle = needle.as_ref();
     let re = regex::Regex::new(needle).unwrap();
+    eprintln!("=== HAYSTACK ===");
+    eprintln!("{}", haystack);
+    eprintln!("=== NEEDLE ===");
+    eprintln!("{}", needle);
     if re.is_match(haystack) {
-        eprintln!("=== HAYSTACK ===");
-        eprintln!("{}", haystack);
-        eprintln!("=== NEEDLE ===");
-        eprintln!("{}", needle);
         panic!("needle was unexpectedly found in haystack");
     }
 }
@@ -82,11 +82,11 @@ pub fn assert_not_contains_regex<H: AsRef<str>, N: AsRef<str>>(haystack: H, need
 pub fn assert_count_is<H: AsRef<str>, N: AsRef<str>>(count: usize, haystack: H, needle: N) {
     let haystack = haystack.as_ref();
     let needle = needle.as_ref();
+    eprintln!("=== HAYSTACK ===");
+    eprintln!("{}", haystack);
+    eprintln!("=== NEEDLE ===");
+    eprintln!("{}", needle);
     if count != haystack.matches(needle).count() {
-        eprintln!("=== HAYSTACK ===");
-        eprintln!("{}", haystack);
-        eprintln!("=== NEEDLE ===");
-        eprintln!("{}", needle);
         panic!("needle did not appear {count} times in haystack");
     }
 }

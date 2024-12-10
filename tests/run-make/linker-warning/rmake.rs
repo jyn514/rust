@@ -18,6 +18,7 @@ fn main() {
         .link_arg("run_make_error")
         .verbose()
         .run_fail()
+        // .assert_stderr_contains_regex("lol no");
         .assert_stderr_contains_regex("fake-linker.*run_make_error");
     run_rustc()
         .link_arg("run_make_error")
