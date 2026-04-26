@@ -56,7 +56,7 @@ use rustc_session::config::{
 use rustc_session::getopts::{self, Matches};
 use rustc_session::lint::{Lint, LintId};
 use rustc_session::output::invalid_output_for_target;
-use rustc_session::{EarlyDiagCtxt, Session, config};
+use rustc_session::{CrateName, EarlyDiagCtxt, Session, config};
 use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::{DUMMY_SP, FileName};
 use rustc_target::json::ToJson;
@@ -587,6 +587,12 @@ fn process_rlink(sess: &Session, compiler: &interface::Compiler) {
                     };
                 }
             };
+
+        // This is the first point at which we have both a Session and the crate name.
+        let name = CrateName::from_normalized(sess, crate_info.local_crate_name, None);
+        #[expect(deprecated, reason = "we never previously loaded the crate name")]
+        sess.crate_name.set(name).expect("-Zlink-only should not build a full TyCtxt");
+
         compiler.codegen_backend.link(sess, compiled_modules, crate_info, metadata, &outputs);
     } else {
         dcx.emit_fatal(RlinkNotAFile {});
@@ -692,7 +698,7 @@ fn print_crate_info(
                 );
                 for &style in &crate_types {
                     let fname = rustc_session::output::filename_for_input(
-                        sess, style, crate_name, &t_outputs,
+                        sess, style, crate_name.normalized, &t_outputs,
                     );
                     println_info!("{}", fname.as_path().file_name().unwrap().to_string_lossy());
                 }
@@ -702,7 +708,7 @@ fn print_crate_info(
                     // no crate attributes, print out an error and exit
                     return Compilation::Continue;
                 };
-                println_info!("{}", passes::get_crate_name(sess, attrs));
+                println_info!("{}", passes::get_crate_name(sess, attrs).normalized);
             }
             CrateRootLintLevels => {
                 let Some(attrs) = attrs.as_ref() else {
@@ -711,7 +717,7 @@ fn print_crate_info(
                 };
                 let crate_name = passes::get_crate_name(sess, attrs);
                 let lint_store = crate::unerased_lint_store(sess);
-                let features = rustc_expand::config::features(sess, attrs, crate_name);
+                let features = rustc_expand::config::features(sess, attrs, crate_name.normalized);
                 let registered_tools = rustc_resolve::registered_tools_ast(sess.dcx(), attrs, sess);
                 let lint_levels = rustc_lint::LintLevelsBuilder::crate_root(
                     sess,

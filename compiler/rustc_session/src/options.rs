@@ -229,6 +229,7 @@ macro_rules! top_level_options {
         }
 
         impl Options {
+            #[expect(deprecated, reason = "need to hash all CLI options even if they're not present")]
             pub fn dep_tracking_hash(&self, for_crate_hash: bool) -> Hash64 {
                 let mut sub_hashes = BTreeMap::new();
                 $(
@@ -337,6 +338,7 @@ top_level_options!(
         prints: Vec<PrintRequest> [UNTRACKED],
         cg: CodegenOptions [SUBSTRUCT] { TARGET_MODIFIER: CodegenOptions(CodegenOptionsTargetModifiers) },
         externs: Externs [UNTRACKED],
+        #[deprecated = "use `Session::crate_name()` instead, which accounts for `#![crate_name]`"]
         crate_name: Option<String> [TRACKED],
         /// Indicates how the compiler should treat unstable features.
         unstable_features: UnstableFeatures [TRACKED],

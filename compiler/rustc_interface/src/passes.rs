@@ -37,12 +37,12 @@ use rustc_parse::lexer::StripTokens;
 use rustc_parse::{new_parser_from_file, new_parser_from_source_str, unwrap_or_emit_fatal};
 use rustc_passes::{abi_test, input_stats, layout_test};
 use rustc_resolve::{Resolver, ResolverOutputs};
-use rustc_session::Session;
 use rustc_session::config::{CrateType, Input, OutFileName, OutputFilenames, OutputType};
 use rustc_session::cstore::Untracked;
 use rustc_session::output::{filename_for_input, invalid_output_for_target};
 use rustc_session::parse::feature_err;
 use rustc_session::search_paths::PathKind;
+use rustc_session::{CrateName, Session};
 use rustc_span::{
     DUMMY_SP, ErrorGuaranteed, ExpnKind, SourceFileHash, SourceFileHashAlgorithm, Span, Symbol, sym,
 };
@@ -312,14 +312,13 @@ fn configure_and_expand(
 fn print_macro_stats(ecx: &ExtCtxt<'_>) {
     use std::fmt::Write;
 
-    let crate_name = ecx.ecfg.crate_name.as_str();
-    let crate_name = if crate_name == "build_script_build" {
+    let crate_name = if ecx.ecfg.crate_name == sym::build_script_build {
         // This is a build script. Get the package name from the environment.
         let pkg_name =
             std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "<unknown crate>".to_string());
         format!("{pkg_name} build script")
     } else {
-        crate_name.to_string()
+        ecx.ecfg.crate_name.to_string()
     };
 
     // No instability because we immediately sort the produced vector.
@@ -936,7 +935,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
         krate.spans.inner_span,
     );
     let stable_crate_id = StableCrateId::new(
-        crate_name,
+        crate_name.normalized,
         crate_types.contains(&CrateType::Executable),
         sess.opts.cg.metadata.clone(),
         sess.cfg_version,
@@ -944,7 +943,7 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
 
     let outputs = util::build_output_filenames(&pre_configured_attrs, sess);
 
-    let dep_graph = setup_dep_graph(sess, crate_name, stable_crate_id);
+    let dep_graph = setup_dep_graph(sess, crate_name.normalized, stable_crate_id);
 
     let cstore =
         FreezeLock::new(Box::new(CStore::new(compiler.codegen_backend.metadata_loader())) as _);
@@ -1008,13 +1007,13 @@ pub fn create_and_enter_global_ctxt<T, F: for<'tcx> FnOnce(TyCtxt<'tcx>) -> T>(
         |tcx| {
             let feed = tcx.create_crate_num(stable_crate_id).unwrap();
             assert_eq!(feed.key(), LOCAL_CRATE);
-            feed.crate_name(crate_name);
+            feed.crate_name(crate_name.normalized);
 
             let feed = tcx.feed_unit_query();
             feed.features_query(tcx.arena.alloc(rustc_expand::config::features(
                 tcx.sess,
                 &pre_configured_attrs,
-                crate_name,
+                crate_name.normalized,
             )));
             feed.crate_for_resolver(tcx.arena.alloc(Steal::new((krate, pre_configured_attrs))));
             feed.output_filenames(Arc::new(outputs));
@@ -1319,8 +1318,25 @@ pub(crate) fn start_codegen<'tcx>(
     (codegen, crate_info, metadata)
 }
 
-/// Compute and validate the crate name.
-pub fn get_crate_name(sess: &Session, krate_attrs: &[ast::Attribute]) -> Symbol {
+/// Compute and validate the crate name, then store it on the Session.
+///
+/// NOTE: this function will panic if called more than once in the same Session.
+#[expect(deprecated, reason = "initial crate name loading")]
+#[track_caller]
+pub fn load_crate_name(sess: &Session, krate_attrs: &[ast::Attribute]) {
+    let new_name = get_crate_name(sess, krate_attrs);
+
+    // When we have `--print=file-names,crate-name`, we try to load the crate name more than once.
+    // Rather than panicking, just allow that as long as we'd use the same name both times.
+    if let Some(existing) = sess.crate_name.get()
+        && *existing == new_name
+    {
+        return;
+    }
+    sess.crate_name.set(new_name).expect("`load_crate_name` called more than once!");
+}
+
+pub fn get_crate_name(sess: &Session, krate_attrs: &[ast::Attribute]) -> CrateName {
     // We validate *all* occurrences of `#![crate_name]`, pick the first find and
     // if a crate name was passed on the command line via `--crate-name` we enforce
     // that they match.
@@ -1331,11 +1347,7 @@ pub fn get_crate_name(sess: &Session, krate_attrs: &[ast::Attribute]) -> Symbol 
     let attr_crate_name =
         parse_crate_name(sess, krate_attrs, ShouldEmit::EarlyFatal { also_emit_lints: true });
 
-    let validate = |name, span| {
-        rustc_session::output::validate_crate_name(sess, name, span);
-        name
-    };
-
+    #[expect(deprecated, reason = "sess.crate_name isn't set yet")]
     if let Some(crate_name) = &sess.opts.crate_name {
         let crate_name = Symbol::intern(crate_name);
         if let Some((attr_crate_name, span)) = attr_crate_name
@@ -1347,11 +1359,11 @@ pub fn get_crate_name(sess: &Session, krate_attrs: &[ast::Attribute]) -> Symbol 
                 attr_crate_name,
             });
         }
-        return validate(crate_name, None);
+        return CrateName::from_normalized(sess, crate_name, None);
     }
 
     if let Some((crate_name, span)) = attr_crate_name {
-        return validate(crate_name, Some(span));
+        return CrateName::from_normalized(sess, crate_name, Some(span));
     }
 
     if let Input::File(ref path) = sess.io.input
@@ -1360,11 +1372,11 @@ pub fn get_crate_name(sess: &Session, krate_attrs: &[ast::Attribute]) -> Symbol 
         if file_stem.starts_with('-') {
             sess.dcx().emit_err(errors::CrateNameInvalid { crate_name: file_stem });
         } else {
-            return validate(Symbol::intern(&file_stem.replace('-', "_")), None);
+            return CrateName::from_unnormalized(sess, file_stem, None);
         }
     }
 
-    sym::rust_out
+    CrateName::from_normalized(sess, sym::rust_out, None)
 }
 
 pub(crate) fn parse_crate_name(
